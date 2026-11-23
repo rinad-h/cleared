@@ -25,9 +25,14 @@ export default function ConsoleCheckupsPage({ searchParams }: PageProps<"/consol
   return (
     <Gate area="staff">
       <section aria-labelledby="page-title" className="max-w-3xl space-y-6">
-        <h1 id="page-title" className="text-2xl font-semibold tracking-tight">
-          Checkups
-        </h1>
+        <div className="space-y-1">
+          <h1 id="page-title" className="text-2xl font-semibold tracking-tight">
+            Checkups
+          </h1>
+          <p className="text-muted-foreground">
+            Recurring maintenance tasks. Advisory only: an overdue checkup never stops anyone using a machine.
+          </p>
+        </div>
         <Checkups searchParams={searchParams} />
       </section>
     </Gate>
