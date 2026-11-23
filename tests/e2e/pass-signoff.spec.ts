@@ -19,6 +19,8 @@ async function openMember(page: Page, email: string) {
 }
 
 test("scan → NOT CLEARED → staff sign-off → CLEARED → revoke → NOT CLEARED", async ({ browser, baseURL }) => {
+  // Three accounts and a dozen pages: past 60 s when the whole suite shares one dev server.
+  test.setTimeout(120_000);
   const cert = `Laser basics ${suffix()}`;
   const room = `Laser Room ${suffix()}`;
   const machine = `Laser cutter ${suffix()}`;

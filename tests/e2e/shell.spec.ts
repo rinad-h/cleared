@@ -1,13 +1,13 @@
-import AxeBuilder from "@axe-core/playwright";
-import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
 import { ADMIN_STATE } from "./accounts";
+import { expectAxeClean, expectNoHorizontalScroll } from "./a11y-helpers";
 
 // Signed-in pages (viewed as the admin that auth.spec.ts created).
 const MEMBER_PAGES = ["/machines", "/me/certifications", "/me/account", "/m/example-token"];
 const CONSOLE_PAGES = [
   "/console",
   "/console/faults",
+  "/console/checkups",
   "/console/members",
   "/console/settings",
   "/console/rooms",
@@ -21,25 +21,8 @@ const CONSOLE_PAGES = [
 const PUBLIC_PAGES = ["/help", "/terms", "/privacy", "/sign-in", "/sign-up"];
 // Signed-in areas: proxy.ts sends signed-out visitors to sign-in.
 const PROTECTED_PATHS = ["/machines", "/m/example-token", "/me/account", "/console", "/console/members", "/setup", "/join/example-token"];
-const WIDTHS = [320, 375];
-
-async function expectNoHorizontalScroll(page: Page) {
-  const overflow = await page.evaluate(
-    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
-  );
-  expect(overflow, "page scrolls horizontally").toBeLessThanOrEqual(0);
-}
-
-async function expectAxeClean(page: Page) {
-  // A button fading from disabled (50% opacity) to enabled after hydration
-  // can be sampled mid-transition and fail colour contrast under load.
-  // Settle every transition so axe sees final colours.
-  await page.addStyleTag({ content: "*, *::before, *::after { transition: none !important; animation: none !important; }" });
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
-    .analyze();
-  expect(results.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
-}
+// P7-01: the narrowest phone and a desktop.
+const WIDTHS = [320, 1280];
 
 test("health route reports ok, the E2E environment and this checkout's version", async ({ request }) => {
   const res = await request.get("/api/health");
@@ -127,6 +110,7 @@ for (const width of WIDTHS) {
     });
 
     test("console drawer opens on a phone and navigates", async ({ page }) => {
+      test.skip(width >= 1024, "the console shows a sidebar on desktop (tested below)");
       await page.goto("/console");
       const drawer = page.getByRole("dialog");
       // In dev the button can be clicked before React hydrates; retry until the drawer opens.
