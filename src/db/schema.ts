@@ -9,7 +9,7 @@ import {
   uniqueIndex,
   type AnySQLiteColumn,
 } from "drizzle-orm/sqlite-core";
-import { MACHINE_STATUSES, MEMBER_STATUSES, OUT_OF_SERVICE_REASONS, ROLES } from "../server/domain/enums";
+import { MACHINE_STATUSES, MEMBER_STATUSES, OUT_OF_SERVICE_REASONS, ROLES, SESSION_END_REASONS } from "../server/domain/enums";
 import { user } from "./auth-schema";
 
 /**
@@ -250,5 +250,50 @@ export const grants = sqliteTable(
     check("grants_revoke_reason_consistent", sql`(${t.revokedAt} IS NULL) = (${t.revokeReason} IS NULL)`),
     check("grants_expiry_after_grant", sql`${t.expiresAt} IS NULL OR ${t.expiresAt} > ${t.grantedAt}`),
     index("grants_member_cert").on(t.memberId, t.certificationId),
+  ],
+);
+
+/* ------------------------------------------------------------- Phase 4 */
+
+/**
+ * Self-reported machine usage (FR-10; the PRD's `sessions`, renamed so it
+ * can't be confused with Better Auth's `session`). Open while `ended_at` is
+ * null; active while open and `now < expected_end_at`. Expired-but-open rows
+ * are closed lazily (`ended_at = expected_end_at`, `end_reason = 'expired'`).
+ * The partial unique index is the backstop for "one open session per machine".
+ */
+export const machineSessions = sqliteTable(
+  "machine_sessions",
+  {
+    id: text("id").primaryKey(),
+    machineId: text("machine_id")
+      .notNull()
+      .references(() => machines.id, { onDelete: "restrict" }),
+    memberId: text("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "restrict" }),
+    startedAt: integer("started_at").notNull(),
+    expectedEndAt: integer("expected_end_at").notNull(),
+    endedAt: integer("ended_at"),
+    endReason: text("end_reason", { enum: SESSION_END_REASONS }),
+    endedByMemberId: text("ended_by_member_id").references(() => members.id, { onDelete: "restrict" }),
+    supervisionAcknowledged: integer("supervision_acknowledged", { mode: "boolean" }).notNull().default(false),
+    clientRequestId: text("client_request_id").notNull().unique(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    check(
+      "machine_sessions_end_reason",
+      sql`${t.endReason} IS NULL OR ${t.endReason} IN (${inList(SESSION_END_REASONS)})`,
+    ),
+    check("machine_sessions_supervision_acknowledged", sql`${t.supervisionAcknowledged} IN (0,1)`),
+    check("machine_sessions_end_after_start", sql`${t.expectedEndAt} > ${t.startedAt}`),
+    check("machine_sessions_max_length", sql`${t.expectedEndAt} - ${t.startedAt} <= 240 * 60000`),
+    check("machine_sessions_ended_consistent", sql`(${t.endedAt} IS NULL) = (${t.endReason} IS NULL)`),
+    check("machine_sessions_ended_after_start", sql`${t.endedAt} IS NULL OR ${t.endedAt} >= ${t.startedAt}`),
+    uniqueIndex("machine_sessions_one_open").on(t.machineId).where(sql`ended_at IS NULL`),
+    index("machine_sessions_open_expiry").on(t.expectedEndAt).where(sql`ended_at IS NULL`),
+    index("machine_sessions_member").on(t.memberId, t.startedAt),
+    index("machine_sessions_machine").on(t.machineId, t.startedAt),
   ],
 );

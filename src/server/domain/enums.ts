@@ -18,3 +18,7 @@ export type OutOfServiceReason = (typeof OUT_OF_SERVICE_REASONS)[number];
 
 /** The typical session lengths offered by the machine form (minutes, 15–240). */
 export const SESSION_LENGTHS = [15, 30, 45, 60, 90, 120, 180, 240] as const;
+
+/** Why a machine session ended (Phase 4). `machine_down` is written from Phase 5. */
+export const SESSION_END_REASONS = ["user", "staff", "expired", "machine_down", "authorization_removed"] as const;
+export type SessionEndReason = (typeof SESSION_END_REASONS)[number];

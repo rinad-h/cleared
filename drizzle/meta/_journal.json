@@ -29,6 +29,13 @@
       "when": 1795452396809,
       "tag": "0003_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1795456547775,
+      "tag": "0004_sessions",
+      "breakpoints": true
     }
   ]
 }
