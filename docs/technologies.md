@@ -675,6 +675,29 @@ A session is active while `ended_at IS NULL AND now < expected_end_at`. Expired-
 | Sign in | 1 | ~5 | ~3 |
 | Sign up | 1 | ~4 | ~4 |
 
+**Measured (Phase 7 P7-42, 2026-11-23)** by `tests/services/query-audit.spec.ts` on local D1 (the same `meta.rows_read` / `rows_written` counters the free plan bills), with 120 members, 4 certifications, 15 past sessions per machine, 8 service records per machine and a few open faults. Service reads only: add ~2–4 rows for the request's session lookup (`getActor()`: Better Auth's cookie cache, then the `members` row) on every signed-in request. Run `npx vitest run tests/services/query-audit.spec.ts --reporter=verbose` to re-measure.
+
+| Operation | Rows read, 10 machines | Rows read, 60 machines | Rows written |
+|---|---|---|---|
+| Pass page (`/m/[token]`) | 15 | 15 | 0 |
+| Board page / `/api/status-board` 200 | 37 | 155 | 0 |
+| `/api/status-board` or `/api/console` 304 | 1 | 1 | 0 |
+| My certifications | 13 | 13 | 0 |
+| Console home / `/api/console` 200 | 50 | 319 | 0 |
+| Fault queue | 10 | 60 | 0 |
+| Checkups | 12 | 60 | 0 |
+| Machine detail | 103 | 105 | 0 |
+| Service history page | 43 | 43 | 0 |
+| Members list / search (120 members) | 103 / 133 | 103 / 133 | 0 |
+| Member detail | 20 | 20 | 0 |
+| Start session | 19 | 19 | 9 |
+| End session | 7 | 7 | 2 |
+| Report fault | 6 | 6 | 7 |
+| Sign off | 8 | 8 | 5 |
+| Log service record | 10 | 10 | 6 |
+
+Projection for the pilot scenario below with these numbers: 1,500 page views × ~40 rows + 8 board viewers × 1,200 polls × (mostly 304s at 1 row, ~5% 200s at ~40 rows) + 3 consoles × 1,200 polls × (1 row, ~5% at ~50) + 250 actions × ~15 rows ≈ **0.1M rows read/day (2% of 5M)** and ~2k rows written (2%); requests are unchanged (~16%). The P7-43 replay script (a whole pilot day against `npm run preview`) wasn't built: the per-operation measurements above make the projection directly.
+
 ### 13.2 Scenarios
 
 | Scenario | Assumptions | Requests/day | Rows read/day | Rows written/day |
