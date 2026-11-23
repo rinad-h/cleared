@@ -318,7 +318,7 @@ All service tests call services directly with actors from the `actors` helper an
 
 ## 8. Exit criteria
 
-- [ ] T09, T10 (full), T04 (complete), console route, action-wrapper and rate-limit tests green.
+- [x] T09, T10 (full), T04 (complete), console route, action-wrapper and rate-limit tests green.
 - [ ] **PRD M1 and M2 exit criteria met:** T02–T11 pass (T01 from Phase 5, T11 manual on the deployed app).
 - [ ] Console home supervisor check measured (≤ 20 s, 4 of 5).
 - [ ] Migration `0006` applied to the deployment.
@@ -346,3 +346,25 @@ All service tests call services directly with actors from the `actors` helper an
 | Rate-limit binding semantics (per location, eventual) let bursts through | Acceptable for a pilot (PRD: "basic per-instance limit"); shared limits are P1 |
 | Permission drift as actions and services are added later | Action-wrapper sweep and the T10 service list fail `npm test` (and so `npm run check`) when something is missing |
 | Console home render is heavy with many active sessions | First render and poll payload capped (e.g. 100 active sessions); CPU checked in Phase 7 |
+
+---
+
+## 11. Implementation notes (decided while building)
+
+| Decision | Detail | Date |
+|---|---|---|
+| Migration `0006` | `drizzle/0006_checkups.sql`: generated, renamed from drizzle-kit's random name (journal tag updated). No `0007_rate_limits.sql`: the binding path is used (below) | 2026-11-23 |
+| Rate limits: binding only | `RL_ACTIONS` has been in `wrangler.jsonc` since Phase 0, so `src/server/rate-limit.ts` has the `RateLimiter` interface, the binding implementation and `enforceRateLimit()`; the D1 fallback table wasn't built. If P6-40 on the deployment shows the binding doesn't limit, add the fallback then. Without the binding (it shouldn't happen), `getRateLimiter()` allows everything and logs `rate_limit.binding_missing` once | 2026-11-23 |
+| Where the limit runs | `startSession`, `reportFault` and `joinMakerspace` take `{ limiter }` as an option and check it right after `parse()`, before any D1 read, so a replayed (double-tapped) request also counts. Only the server actions pass `getRateLimiter()`; services called without a limiter aren't limited (tests). The message is the service's ("You're doing that too fast. Try again in a minute."), and the pass, report sheet and join form already show service messages as they are (P6-24) | 2026-11-23 |
+| Checkup link | `NOT_SUPPORTED_YET` is gone. New codes `INVALID_CHECKUP`, `CHECKUP_TYPE_MISMATCH` (400). Validation order: replay → `FUTURE_DATE` → `CORRECTION_NO_EFFECTS` (faults, then checkup) → `CHECKUP_TYPE_MISMATCH` → `INVALID_PERFORMER` → `INVALID_CORRECTION` → `INVALID_FAULT` → `INVALID_CHECKUP`. The checkup check is repeated inside statement 1 of the machine write (`checkupValidSql`), and `refused()` explains it | 2026-11-23 |
+| Checkup writes | Create is one batch: an `INSERT … SELECT … WHERE` the machine isn't retired and the actor is still active staff, then a bump guarded by "the row exists". Update re-checks the actor inside the `UPDATE`. There's no `clientRequestId` (the spec's input has none): the dialog disables its button while saving and closes on success | 2026-11-23 |
+| Checkup lists | `readCheckups()` is one query builder select with the correlated `MAX(performed_at)` subquery (fully qualified names). All three tabs sort by next due ascending, which is "most overdue first" for Overdue and "soonest first" for Due soon. Machine detail lists inactive checkups too | 2026-11-23 |
+| Console data | One read batch of six (settings, open faults on live machines, out-of-service machines, open sessions with member/machine/room, requirements of machines with open sessions, grants of members with open sessions; the last two filtered by subqueries, so no `IN` lists) plus the checkup list in parallel. Joined columns are aliased (technologies.md §16). "No longer authorized" calls `computePass()` with the machine forced to available and unsupervised, so only certifications count. At most 100 active sessions are listed (`activeSessionsTruncated`) | 2026-11-23 |
+| Console ETag | `W/"c.<data_version>.<memberId>.<role>.<validUntil>"`; the parser only accepts `admin`/`staff`. `validUntil` = min(session estimated ends, expiries of grants that a running session relies on, checkup boundaries from `nextBoundary()`, now + 10 min) | 2026-11-23 |
+| End session from the console | `<EndSessionButton>` got an `onEnded` callback; the console passes the poll's `refresh()`. The action's own `refresh()` re-renders the page, but `<ConsoleLive>` keeps showing its polled data, so without the extra poll the row would stay until the next 30 s poll | 2026-11-23 |
+| Setup checklist | Admins only, and it disappears once every step is done | 2026-11-23 |
+| Checkup status | `<StatusBadge>` gained `overdue`, `due-soon`, `on-schedule` and `inactive` (AGENTS.md rule 17). The member Help page now lists only the member-facing statuses | 2026-11-23 |
+| Validation sweep (P6-07) | `action()` stores its schema; `tests/unit/actions-wrapped.spec.ts` asserts each action has a Zod schema. `tests/unit/validation-limits.spec.ts` reads every `length(...)` CHECK in `drizzle/*.sql` and probes the matching Zod field at max / max + 1 (and min / min − 1); a new CHECK without an entry fails. Control characters: the Phase 5 text fields and `optionalText()` now reject them (`hasControlCharsInText()` allows newline, carriage return and tab in long text). `dangerouslySetInnerHTML` is banned with `no-restricted-syntax` (a separate config object can't name the `react/` plugin rule) | 2026-11-23 |
+| T10 sweep | `tests/services/T10-permissions.spec.ts`. "Allowed" means not refused with a permission code (a business refusal such as `MACHINE_BUSY` still counts as allowed); each actor kind gets fresh data. A second block imports every service module and fails when an exported function doesn't take `(db, actor, …)` or has no row, apart from the listed actor-free helpers. `T10-access.spec.ts` stays as the Phase 1–4 detail tests | 2026-11-23 |
+| Nav | Final order (Home · Faults · Checkups · Machines · Members · Rooms · Labels · Certifications · Settings), with the overdue-checkup count read once per request like the fault count | 2026-11-23 |
+| Not done here | P6-40 (25 fault reports on the deployment), P6-41 (supervisor timing with 5 staff testers), P6-42 (Journey H on a phone over a day), P6-43 (T11 on the deployment), P6-44 (`wrangler tail` with a background tab) and applying `0006` to the deployment (`npm run db:migrate:remote`, then `npm run deploy`) need the deployed app and people | 2026-11-23 |
