@@ -6,6 +6,7 @@ import { Gate } from "@/components/gate";
 import { RoleForm, StatusForm } from "@/components/members/member-forms";
 import { MemberStatusLabel, ROLE_LABELS } from "@/components/members/member-status";
 import { MemberCertifications } from "@/components/grants/member-certifications";
+import { SessionList } from "@/components/sessions/session-list";
 import { getMemberDetail } from "@/data/members";
 import { getMakerspace } from "@/data/me";
 import { getActor } from "@/lib/actor";
@@ -91,6 +92,25 @@ async function MemberDetail({ params }: Pick<PageProps<"/console/members/[id]">,
         canRevoke={mayGrant}
         timeZone={timeZone}
       />
+
+      <div className="space-y-3">
+        <h2 className="text-lg font-semibold">Sessions</h2>
+        {member.activeSessions.length > 0 ? (
+          <SessionList
+            sessions={member.activeSessions}
+            now={member.now}
+            timeZone={timeZone}
+            label="Active sessions"
+            canStaffEnd={can(actor, "manageMachineOps")}
+          />
+        ) : null}
+        <details className="rounded-lg border p-3">
+          <summary className="cursor-pointer font-medium">Recent sessions ({member.recentSessions.length})</summary>
+          <div className="mt-3">
+            <SessionList sessions={member.recentSessions} now={member.now} timeZone={timeZone} label="Recent sessions" />
+          </div>
+        </details>
+      </div>
 
       {showRole ? (
         <div className="space-y-3">

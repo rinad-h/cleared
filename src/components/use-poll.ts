@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
-export type PollOptions = {
+export type PollOptions<T = unknown> = {
   /** Poll interval while the viewer is active. */
   intervalMs?: number;
   /** Slower interval after `idleAfterMs` without interaction, and after errors (429/5xx/network). */
@@ -10,6 +10,13 @@ export type PollOptions = {
   idleAfterMs?: number;
   /** While false nothing is fetched or scheduled, and `refresh()` does nothing. */
   enabled?: boolean;
+  /**
+   * Data the server already rendered for `url` (first paint), and its ETag.
+   * With both, the first poll waits a full interval and sends that ETag, so an
+   * unchanged board answers 304.
+   */
+  initialData?: T;
+  initialEtag?: string;
 };
 
 export type PollState<T> = {
@@ -57,9 +64,13 @@ export function usePoll<T>(
     idleIntervalMs = 120_000,
     idleAfterMs = 10 * 60_000,
     enabled = true,
-  }: PollOptions = {},
+    initialData,
+    initialEtag,
+  }: PollOptions<T> = {},
 ): PollState<T> {
-  const [snapshot, setSnapshot] = useState<Snapshot<T>>({ url });
+  const [snapshot, setSnapshot] = useState<Snapshot<T>>({ url, data: initialData });
+  // The initial data and ETag belong to the first url only.
+  const initial = useRef({ url, etag: initialData !== undefined ? (initialEtag ?? null) : null, valid: true });
 
   // Latest options, read by the timer callbacks.
   const config = useRef({ url, enabled, intervalMs, idleIntervalMs, idleAfterMs });
@@ -135,8 +146,11 @@ export function usePoll<T>(
 
   useEffect(() => {
     const s = state.current;
-    s.etag = null;
-    s.lastPolled = 0;
+    const first = initial.current;
+    if (url !== first.url) first.valid = false;
+    const seeded = first.valid && first.etag !== null;
+    s.etag = seeded ? first.etag : null;
+    s.lastPolled = seeded ? Date.now() : 0;
     s.stopped = false;
     s.slow = false;
     const cleanup = () => {
@@ -162,7 +176,7 @@ export function usePoll<T>(
 
     for (const e of ACTIVITY_EVENTS) window.addEventListener(e, onActivity, { passive: true });
     document.addEventListener("visibilitychange", onVisibility);
-    control.schedule(); // lastPolled = 0, so this polls immediately when visible
+    control.schedule(); // polls immediately when visible, unless seeded with server data
 
     return () => {
       for (const e of ACTIVITY_EVENTS) window.removeEventListener(e, onActivity);

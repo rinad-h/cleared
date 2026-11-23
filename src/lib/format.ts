@@ -25,6 +25,18 @@ export function formatDateTime(ms: number, timeZone: string): string {
   return formatter(timeZone, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }).format(ms);
 }
 
+/** "2:41 PM" (session times on the pass and the board) */
+export function formatTime(ms: number, timeZone: string): string {
+  return formatter(timeZone, { hour: "numeric", minute: "2-digit" }).format(ms);
+}
+
+/** "2:41 PM" today, otherwise "Thu 2:41 PM" (estimates that may fall on another day). */
+export function formatTimeOrDay(ms: number, now: number, timeZone: string): string {
+  const day = formatter(timeZone, { year: "numeric", month: "numeric", day: "numeric" });
+  if (day.format(ms) === day.format(now)) return formatTime(ms, timeZone);
+  return formatter(timeZone, { weekday: "short", hour: "numeric", minute: "2-digit" }).format(ms);
+}
+
 /** "2:41:07 PM" (the pass clock) */
 export function formatClock(ms: number, timeZone: string): string {
   return formatter(timeZone, { hour: "numeric", minute: "2-digit", second: "2-digit" }).format(ms);

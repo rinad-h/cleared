@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { ExternalLink } from "lucide-react";
 import { Gate } from "@/components/gate";
 import { CertStateChip } from "@/components/grants/cert-state";
+import { SessionList } from "@/components/sessions/session-list";
 import { getMyCertifications } from "@/data/certifications";
 import { getMakerspace } from "@/data/me";
 import { formatDate } from "@/lib/format";
@@ -18,7 +19,7 @@ export default function MyCertificationsPage() {
 }
 
 async function MyCertifications() {
-  const [{ certifications }, makerspace] = await Promise.all([getMyCertifications(), getMakerspace()]);
+  const [{ certifications, recentSessions, now }, makerspace] = await Promise.all([getMyCertifications(), getMakerspace()]);
   const tz = makerspace?.timezone ?? "UTC";
   return (
     <section aria-labelledby="page-title" className="mx-auto max-w-2xl space-y-4 py-2">
@@ -34,6 +35,8 @@ async function MyCertifications() {
           ))}
         </ul>
       )}
+      <h2 className="pt-4 text-lg font-semibold">Recent sessions</h2>
+      <SessionList sessions={recentSessions} now={now} timeZone={tz} label="Recent sessions" />
     </section>
   );
 }
