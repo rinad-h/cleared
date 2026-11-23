@@ -1,0 +1,52 @@
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+
+# testing
+/coverage
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+
+# next.js (including the E2E build dir .next-e2e)
+/.next*/
+/out/
+/build
+
+# OpenNext / Wrangler
+/.open-next/
+/.wrangler/
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+
+# Secrets: never commit. OpenNext can embed .env* values into the bundle.
+.env*
+.dev.vars*
+!.dev.vars.example
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# Your deployment's values (subdomain, D1 ids) and the config rendered from them.
+# The committed wrangler.jsonc keeps placeholders only (scripts/render-wrangler.mjs).
+/cleared.config.json
+/wrangler.deploy.jsonc
+/.wrangler.types.jsonc
+/.cloudflare-env.check.d.ts
+
+# Variants of the personal config files above, and database dumps (personal
+# data; the repository is public). Migrations in drizzle/ stay tracked.
+/wrangler.deploy.*
+cleared.config.json*
+!cleared.config.example.json
+/*.sql
+backup-*.sql
+/backups/

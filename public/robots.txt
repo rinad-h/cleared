@@ -1,0 +1,3 @@
+# Pass pages and the staff console must not be indexed.
+User-agent: *
+Disallow: /

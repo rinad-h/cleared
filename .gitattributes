@@ -1,0 +1,7 @@
+# LF everywhere, so shell scripts run under Git Bash on Windows (CRLF breaks
+# `set -euo pipefail`) and generated files compare equal on every OS.
+* text=auto eol=lf
+*.png binary
+*.ico binary
+*.jpg binary
+*.woff2 binary

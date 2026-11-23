@@ -15,7 +15,7 @@
 
 | # | Phase | Delivers | PRD FRs | PRD tests | Est. effort* |
 |---|---|---|---|---|---|
-| 0 | [Foundation & platform](./phase-0-foundation.md) | Next.js + OpenNext scaffold, D1 (staging + prod), CI/CD, service-test and E2E harness, CPU spikes (password hashing, server rendering), health route on the final `workers.dev` URL | — | — | 2–3 days |
+| 0 | [Foundation & platform](./phase-0-foundation.md) | Next.js + OpenNext scaffold, D1 (staging + prod), local check + deploy scripts, service-test and E2E harness, CPU spikes (password hashing, server rendering), health route on the final `workers.dev` URL | — | — | 2–3 days |
 | 1 | [Identity, setup & access control](./phase-1-identity-and-access.md) | Better Auth (email + password, verification, password reset), `members`, `settings`, first-run setup, join link, roles, suspension, actor/permission layer, app shell | FR-01, FR-02, FR-03 | T10 (part) | 4–5 days |
 | 2 | [Catalog & QR labels](./phase-2-catalog-and-labels.md) | Rooms, certifications, machines (basics + admin-only fields), retire, QR tokens, printable label sheet, `/m/:token` shell | FR-04, FR-05, FR-06 | T10 (part), T01 (partial) | 3–4 days |
 | 3 | [Certifications & the machine pass](./phase-3-certifications-and-pass.md) | Pass engine, pass page, sign-off, revocation, expiry, Members pages, My certifications | FR-07, FR-08 (grant side), FR-09, FR-18 | T02, T03 | 4–5 days |
@@ -80,14 +80,14 @@ Each phase ends with part of the PRD 5.1 demo working on **staging**:
 
 These turn PRD Section 14's "Build rule" and "Instruction to Replit Agent" into rules for this stack.
 
-1. **One phase at a time.** Don't start phase *N+1* until phase *N*'s exit criteria are met: automated tests green in CI, manual checks done on **staging**, and the phase deployed to **production** (from Phase 2 on).
+1. **One phase at a time.** Don't start phase *N+1* until phase *N*'s exit criteria are met: `npm run check` and `npm run test:e2e` green, manual checks done on **staging**, and the phase deployed to **production** (from Phase 2 on).
 2. **The PRD wins on behaviour; `technologies.md` wins on platform.** If they conflict (for example Clerk vs Better Auth), follow `technologies.md` and note the deviation in the phase doc's *Decisions* section.
 3. **Never build anything in PRD Section 5.3.** If a task seems to need it, stop and write it down as an open question.
 4. **No websockets, background workers, cron triggers, queues or paid services.** Polling (30 s) and lazy evaluation only.
 5. **Server decides, client displays.** Pass status, permissions, "active session", due dates: all computed on the server with server UTC time. Hiding a button is never security.
-6. **Every mutation is one atomic `db.batch()`**, with the patterns in `technologies.md` §11 (machine write token, guarded inserts, `data_version` bump).
+6. **Every mutation is one atomic `db.batch()`**, with the patterns in `technologies.md` §12 (machine write token, guarded inserts, `data_version` bump).
 7. **Additive migrations only** once production has data (from the end of Phase 2).
-8. **No auth bypass exists in the code.** Services take an `actor` argument, so tests don't need to fake sign-in; E2E signs up real accounts. The only dev-only route (the email outbox) is guarded and checked in CI (Phase 0).
+8. **No auth bypass exists in the code.** Services take an `actor` argument, so tests don't need to fake sign-in; E2E signs up real accounts. The only dev-only route (the email outbox) is guarded and checked by `npm run check` (Phase 0).
 9. **Seed data is clearly fake** ("Demo Makerspace", "Demo Student 1") and never presented as pilot results.
 10. **Privacy:** member-facing responses never include who is using a machine, fault descriptions, or reporter names (PRD 7.1). Logs never include emails, codes, tokens or free text.
 
@@ -173,7 +173,7 @@ Cleared has no REST API of its own. Each phase lists its **operations** in a tab
 | Convention | Rule |
 |---|---|
 | Test files | `tests/services/T02-pass.spec.ts`, etc. One file per PRD test ID; extra cases in `tests/services/<area>.spec.ts`; unit tests in `tests/unit/`; E2E in `tests/e2e/` |
-| Where they run | Vitest with `@cloudflare/vitest-pool-workers`: real `workerd` + a fresh local D1 with all migrations applied |
+| Where they run | Vitest with `@cloudflare/vitest-plugin`: real `workerd` + a fresh local D1 with all migrations applied |
 | Actors | `actors.admin()`, `actors.staff()`, `actors.member({ status })`, `actors.nonMember()`, `actors.anonymous()` insert the `user` + `members` rows and return an `Actor`. Services are called directly with it, so no auth stub exists |
 | Clock | Services take `now`; tests pass it explicitly (`T0`, `T0 + 15 * MIN`, …) |
 | Builders | `seed.machine({ requires: [certA], supervised: true })`, `seed.grant(member, cert, { expiresAt })`, … |
@@ -188,11 +188,11 @@ Cleared has no REST API of its own. Each phase lists its **operations** in a tab
 A phase is done when **all** of the following are true:
 
 - [ ] All tasks in the phase doc are checked off (or explicitly moved to a later phase with a reason).
-- [ ] `pnpm check && pnpm typecheck && pnpm test` pass in CI.
+- [ ] `npm run check` and `npm run test:e2e` pass on the commit being deployed (there is no CI server).
 - [ ] New migrations reviewed by hand, applied to staging, and (from Phase 2 on) to production.
 - [ ] The phase's manual checks pass on **staging** on a physical phone.
 - [ ] The phase's demo checkpoint works on staging.
-- [ ] No new free-tier risk was introduced without a note in `technologies.md` §12.
+- [ ] No new free-tier risk was introduced without a note in `technologies.md` §13.
 - [ ] The phase doc's *Decisions* and *Open questions* sections are updated with anything learned.
 - [ ] Deployed to production (Phases 2+).
 

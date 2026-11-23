@@ -358,7 +358,7 @@ The board matches the PRD 8.1 sketch.
 
 ### 7.3 Tests
 
-Service tests in `tests/services/` (Vitest + `@cloudflare/vitest-pool-workers`, real local D1), calling services directly with actors and an explicit `now`. Route-handler tests call the exported `GET` with a `Request` built in the test, with the session cookie of a test user created through Better Auth's server API.
+Service tests in `tests/services/` (Vitest + `@cloudflare/vitest-plugin`, real local D1), calling services directly with actors and an explicit `now`. Route-handler tests call the exported `GET` with a `Request` built in the test, with the session cookie of a test user created through Better Auth's server API.
 
 **T05 — sessions** (`tests/services/T05-sessions.spec.ts`)
 
