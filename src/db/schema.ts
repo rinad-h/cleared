@@ -9,7 +9,16 @@ import {
   uniqueIndex,
   type AnySQLiteColumn,
 } from "drizzle-orm/sqlite-core";
-import { MACHINE_STATUSES, MEMBER_STATUSES, OUT_OF_SERVICE_REASONS, ROLES, SESSION_END_REASONS } from "../server/domain/enums";
+import {
+  FAULT_STATUSES,
+  MACHINE_STATUSES,
+  MEMBER_STATUSES,
+  OUT_OF_SERVICE_REASONS,
+  ROLES,
+  SERVICE_OUTCOMES,
+  SERVICE_TYPES,
+  SESSION_END_REASONS,
+} from "../server/domain/enums";
 import { user } from "./auth-schema";
 
 /**
@@ -295,5 +304,105 @@ export const machineSessions = sqliteTable(
     index("machine_sessions_open_expiry").on(t.expectedEndAt).where(sql`ended_at IS NULL`),
     index("machine_sessions_member").on(t.memberId, t.startedAt),
     index("machine_sessions_machine").on(t.machineId, t.startedAt),
+  ],
+);
+
+/* ------------------------------------------------------------- Phase 5 */
+
+/**
+ * The service history (FR-15). **Append-only**: migration
+ * `drizzle/0005_faults_service.sql` adds `BEFORE UPDATE` / `BEFORE DELETE`
+ * triggers that `RAISE(ABORT)`. drizzle-kit doesn't generate triggers, so a
+ * future migration that recreates this table must add them again (T08 #7
+ * fails without them). Exactly one of a staff performer or an external
+ * technician; `logged_by` is always the actor. A correction points at the
+ * record it corrects (one level deep, Phase 5 D5). `checkup_id` is validated
+ * in app code from Phase 6.
+ */
+export const serviceRecords = sqliteTable(
+  "service_records",
+  {
+    id: text("id").primaryKey(),
+    machineId: text("machine_id")
+      .notNull()
+      .references(() => machines.id, { onDelete: "restrict" }),
+    performedAt: integer("performed_at").notNull(),
+    performedByMemberId: text("performed_by_member_id").references(() => members.id, { onDelete: "restrict" }),
+    externalTechnician: text("external_technician"),
+    loggedByMemberId: text("logged_by_member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "restrict" }),
+    type: text("type", { enum: SERVICE_TYPES }).notNull(),
+    workDone: text("work_done").notNull(),
+    partsUsed: text("parts_used"),
+    minutesSpent: integer("minutes_spent"),
+    outcome: text("outcome", { enum: SERVICE_OUTCOMES }).notNull(),
+    checkupId: text("checkup_id"),
+    correctsRecordId: text("corrects_record_id").references((): AnySQLiteColumn => serviceRecords.id, {
+      onDelete: "restrict",
+    }),
+    clientRequestId: text("client_request_id").notNull().unique(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    check(
+      "service_records_external_technician_length",
+      sql`${t.externalTechnician} IS NULL OR length(${t.externalTechnician}) BETWEEN 2 AND 120`,
+    ),
+    check("service_records_type", sql`${t.type} IN (${inList(SERVICE_TYPES)})`),
+    check("service_records_work_done_length", sql`length(${t.workDone}) BETWEEN 10 AND 2000`),
+    check("service_records_parts_used_length", sql`${t.partsUsed} IS NULL OR length(${t.partsUsed}) <= 500`),
+    check(
+      "service_records_minutes_spent",
+      sql`${t.minutesSpent} IS NULL OR ${t.minutesSpent} BETWEEN 1 AND 10000`,
+    ),
+    check("service_records_outcome", sql`${t.outcome} IN (${inList(SERVICE_OUTCOMES)})`),
+    check(
+      "service_records_one_performer",
+      sql`(${t.performedByMemberId} IS NULL) <> (${t.externalTechnician} IS NULL)`,
+    ),
+    index("service_records_machine").on(t.machineId, t.performedAt),
+    index("service_records_checkup").on(t.checkupId, t.performedAt).where(sql`checkup_id IS NOT NULL`),
+    index("service_records_corrects").on(t.correctsRecordId).where(sql`corrects_record_id IS NOT NULL`),
+  ],
+);
+
+/**
+ * Problems members report (FR-12). `took_out_of_service` faults block a manual
+ * return to service until a service record resolves them (FR-13). The
+ * description is shown to staff only (PRD 7.1).
+ */
+export const faults = sqliteTable(
+  "faults",
+  {
+    id: text("id").primaryKey(),
+    machineId: text("machine_id")
+      .notNull()
+      .references(() => machines.id, { onDelete: "restrict" }),
+    reportedByMemberId: text("reported_by_member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "restrict" }),
+    description: text("description").notNull(),
+    tookOutOfService: integer("took_out_of_service", { mode: "boolean" }).notNull(),
+    status: text("status", { enum: FAULT_STATUSES }).notNull().default("open"),
+    resolvedByServiceRecordId: text("resolved_by_service_record_id").references(() => serviceRecords.id, {
+      onDelete: "restrict",
+    }),
+    resolvedAt: integer("resolved_at"),
+    clientRequestId: text("client_request_id").notNull().unique(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    check("faults_description_length", sql`length(${t.description}) BETWEEN 10 AND 1000`),
+    check("faults_took_out_of_service", sql`${t.tookOutOfService} IN (0,1)`),
+    check("faults_status", sql`${t.status} IN (${inList(FAULT_STATUSES)})`),
+    check("faults_resolved_at_consistent", sql`(${t.status} = 'resolved') = (${t.resolvedAt} IS NOT NULL)`),
+    check(
+      "faults_resolved_by_consistent",
+      sql`(${t.status} = 'resolved') = (${t.resolvedByServiceRecordId} IS NOT NULL)`,
+    ),
+    index("faults_machine_status").on(t.machineId, t.status),
+    index("faults_open_queue").on(sql`${t.tookOutOfService} DESC`, t.createdAt).where(sql`status = 'open'`),
+    index("faults_resolved_by").on(t.resolvedByServiceRecordId).where(sql`resolved_by_service_record_id IS NOT NULL`),
   ],
 );
