@@ -763,6 +763,8 @@ Things that are known to matter for Next.js 16 + OpenNext + D1 + Better Auth on 
 | A Turbopack dev cache left by an interrupted E2E run can put every page into an "HMR hash mismatch" reload loop | `tests/e2e/run.sh` deletes `.next-e2e` before starting |
 | Production builds (no Cache Components) try to prerender any page that hasn't made a dynamic access yet; touching D1 (`getDb()`) first then fails the build ("Error occurred prerendering page") | Read the session (`getActor()`) or call `connection()` **before** `getDb()` in page data functions (`src/data/*`) |
 | Local `wrangler d1 execute --json` doesn't report `meta.changes` | Scripts that need a count use `RETURNING` and count rows (`scripts/set-password.ts`) |
+| drizzle-kit can't put `COLLATE NOCASE` on a column, and SQLite names the **column** (`UNIQUE constraint failed: rooms.name`), not the index, when a `COLLATE NOCASE` unique index on that column is violated | Case-insensitive uniqueness is a unique index on `name COLLATE NOCASE`; `isUniqueViolation(err, …)` (`src/server/db-errors.ts`) matches the `table.column` form (and the index name, for pure expression indexes) |
+| An object with a `then` property is a thenable: `await`ing it calls `then` | Plans returned from async callbacks (e.g. `withMachineWrite`'s) never use a field called `then` (it's `guarded`) |
 | Windows Git Bash checks files out with CRLF, which breaks `set -euo pipefail` | `.gitattributes`: `* text=auto eol=lf`; scripts spawn tools with `process.execPath` instead of `npx` |
 
 ---
