@@ -406,3 +406,38 @@ export const faults = sqliteTable(
     index("faults_resolved_by").on(t.resolvedByServiceRecordId).where(sql`resolved_by_service_record_id IS NOT NULL`),
   ],
 );
+
+/* ------------------------------------------------------------- Phase 6 */
+
+/**
+ * Recurring per-machine checkups (FR-16). The next due date is computed on
+ * read from the latest linked `scheduled_checkup` record (or `created_at`) +
+ * `interval_days`. Advisory only: never blocks a session. Deactivated, not
+ * deleted. `service_records.checkup_id` has no foreign key (added in Phase 5,
+ * before this table existed); the service validates it with a guarded insert.
+ */
+export const checkups = sqliteTable(
+  "checkups",
+  {
+    id: text("id").primaryKey(),
+    machineId: text("machine_id")
+      .notNull()
+      .references(() => machines.id, { onDelete: "restrict" }),
+    name: text("name").notNull(),
+    intervalDays: integer("interval_days").notNull(),
+    instructions: text("instructions"),
+    active: integer("active", { mode: "boolean" }).notNull().default(true),
+    createdByMemberId: text("created_by_member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "restrict" }),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => [
+    check("checkups_name_length", sql`length(${t.name}) BETWEEN 2 AND 120`),
+    check("checkups_interval_days", sql`${t.intervalDays} BETWEEN 1 AND 730`),
+    check("checkups_instructions_length", sql`${t.instructions} IS NULL OR length(${t.instructions}) <= 2000`),
+    check("checkups_active", sql`${t.active} IN (0,1)`),
+    index("checkups_machine").on(t.machineId),
+  ],
+);
