@@ -1,7 +1,7 @@
 // P2-47, P2-48: label sheet, door poster and machine-by-token (FR-06, T01 partial).
 import { beforeEach, describe, expect, it } from "vitest";
 import { getDoorPoster, getLabelSheet } from "@/server/services/labels";
-import { getMachineByToken } from "@/server/services/machines";
+import { getMachineByToken } from "@/server/services/pass";
 import { actors, createMakerspace, resetIdentity } from "../helpers/actors";
 import { testDb } from "../helpers/db";
 import { resetCatalog, seed } from "../helpers/seed";
@@ -72,21 +72,21 @@ describe("machine by token (P2-48)", () => {
     const member = await actors.member();
     const room = await seed.room({ name: "Wood Shop" });
     const m = await seed.machine({ room, name: "Table saw", supervised: true });
-    expect(await getMachineByToken(db(), member, { token: m.qrToken })).toEqual({
+    expect(await getMachineByToken(db(), member, { token: m.qrToken }, T0)).toMatchObject({
       recognized: true,
-      machine: { id: m.id, name: "Table saw", roomName: "Wood Shop", supervised: true },
+      machine: { id: m.id, name: "Table saw", roomName: "Wood Shop", supervised: true, status: "available", outOfService: null },
       makerspace: { name: "Demo Makerspace", timezone: "America/Edmonton" },
     });
     for (const token of ["AAAAAAAAAAAAAAAAAAAAAA", "not a token!", "", "x".repeat(64)]) {
-      expect(await getMachineByToken(db(), member, { token })).toEqual({ recognized: false });
+      expect(await getMachineByToken(db(), member, { token }, T0)).toEqual({ recognized: false });
     }
-    // Signed in without a membership still resolves (Phase 3 adds the viewer's pass).
-    expect(await getMachineByToken(db(), await actors.nonMember(), { token: m.qrToken })).toMatchObject({ recognized: true });
+    // Signed in without a membership still resolves (with a NOT CLEARED pass, Phase 3).
+    expect(await getMachineByToken(db(), await actors.nonMember(), { token: m.qrToken }, T0)).toMatchObject({ recognized: true });
   });
 
   it("anonymous → UNAUTHENTICATED", async () => {
     const m = await seed.machine();
-    await expect(getMachineByToken(db(), actors.anonymous(), { token: m.qrToken })).rejects.toMatchObject({
+    await expect(getMachineByToken(db(), actors.anonymous(), { token: m.qrToken }, T0)).rejects.toMatchObject({
       code: "UNAUTHENTICATED",
     });
   });

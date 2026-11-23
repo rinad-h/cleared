@@ -1,9 +1,12 @@
 // PRD T10: FR-01–FR-05 and Section 9, at the service layer.
 // Phase 1: identity and access. Phase 2: the catalog (rooms, machines, certifications, labels).
+// Phase 3: sign-off, revoke and certification records.
 import { beforeEach, describe, expect, it } from "vitest";
 import { createCertification, listCertifications, updateCertification } from "@/server/services/certifications";
 import { getDoorPoster, getLabelSheet } from "@/server/services/labels";
-import { createMachine, getMachine, getMachineByToken, listMachines, updateMachine } from "@/server/services/machines";
+import { createMachine, getMachine, listMachines, updateMachine } from "@/server/services/machines";
+import { getMachineByToken } from "@/server/services/pass";
+import { getMemberCertifications, getMyCertifications, revokeGrant, signOff } from "@/server/services/grants";
 import { createRoom, listRooms, moveRoom, updateRoom } from "@/server/services/rooms";
 import { getSetupProgress } from "@/server/services/setup-progress";
 import type { Actor } from "@/server/domain/actor";
@@ -180,9 +183,50 @@ describe("T10 — access control (Phase 2 catalog)", () => {
         await expect(call(actor), `${name} as ${actor.kind}`).rejects.toMatchObject({ code });
       }
     }
-    await expect(getMachineByToken(db(), actors.anonymous(), { token: f.machine.qrToken })).rejects.toMatchObject({
+    await expect(getMachineByToken(db(), actors.anonymous(), { token: f.machine.qrToken }, T0)).rejects.toMatchObject({
       code: "UNAUTHENTICATED",
     });
     await expect(listCertifications(db(), actors.anonymous())).rejects.toMatchObject({ code: "UNAUTHENTICATED" });
+  });
+});
+
+/** Phase 3: sign-off, revoke and certification records, one role below the minimum. */
+describe("T10 — access control (Phase 3 certifications)", () => {
+  async function fixtures() {
+    await createMakerspace();
+    const cert = await seed.cert();
+    const target = await actors.member();
+    const admin = await actors.admin();
+    const grant = await seed.grant(target, cert, { by: admin });
+    return { cert, target, grant };
+  }
+
+  type Call = [name: string, (actor: Actor) => Promise<unknown>];
+  const staffServices = (f: Awaited<ReturnType<typeof fixtures>>): Call[] => [
+    ["signOff", (a) => signOff(db(), a, { memberId: f.target.memberId, certificationId: f.cert.id, clientRequestId: crypto.randomUUID() }, T0)],
+    ["revokeGrant", (a) => revokeGrant(db(), a, { grantId: f.grant.id, reason: "Sweep" }, T0)],
+    ["getMemberCertifications", (a) => getMemberCertifications(db(), a, { memberId: f.target.memberId }, T0)],
+  ];
+
+  it("members → FORBIDDEN on staff services; members may read their own certifications", async () => {
+    const f = await fixtures();
+    const m = await actors.member();
+    for (const [name, call] of staffServices(f)) await expect(call(m), name).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(getMyCertifications(db(), m, T0)).resolves.toBeDefined();
+  });
+
+  it("suspended members, non-members and anonymous are refused everywhere", async () => {
+    const f = await fixtures();
+    const cases = [
+      [await actors.member({ role: "admin", status: "suspended" }), "SUSPENDED"],
+      [await actors.nonMember(), "NOT_A_MEMBER"],
+      [actors.anonymous(), "UNAUTHENTICATED"],
+    ] as const;
+    for (const [actor, code] of cases) {
+      const calls: Call[] = [...staffServices(f), ["getMyCertifications", (a) => getMyCertifications(db(), a, T0)]];
+      for (const [name, call] of calls) {
+        await expect(call(actor), `${name} as ${actor.kind}`).rejects.toMatchObject({ code });
+      }
+    }
   });
 });

@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { machineRequirements, machines } from "@/db/schema";
 import { getLabelSheet } from "@/server/services/labels";
-import { createMachine, getMachine, getMachineByToken, listMachines, updateMachine } from "@/server/services/machines";
+import { createMachine, getMachine, listMachines, updateMachine } from "@/server/services/machines";
+import { getMachineByToken } from "@/server/services/pass";
 import { actors, createMakerspace, dataVersion, resetIdentity } from "../helpers/actors";
 import { testDb } from "../helpers/db";
 import { resetCatalog, seed } from "../helpers/seed";
@@ -225,7 +226,7 @@ describe("retire (P2-44)", () => {
     expect(await listMachines(db(), staff)).toEqual([]);
     expect(await listMachines(db(), staff, { includeRetired: true })).toHaveLength(1);
     expect((await getLabelSheet(db(), staff, {}, T0, SITE)).labels).toEqual([]);
-    expect(await getMachineByToken(db(), staff, { token: m.qrToken })).toEqual({ recognized: false });
+    expect(await getMachineByToken(db(), staff, { token: m.qrToken }, T0)).toEqual({ recognized: false });
     await expect(updateMachine(db(), admin, { id: m.id, name: "Back again" }, T0)).rejects.toMatchObject({
       code: "MACHINE_RETIRED",
     });
