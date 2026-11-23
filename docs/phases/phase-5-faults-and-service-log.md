@@ -311,7 +311,7 @@ Service tests in `tests/services/` call services directly with actors from the `
 
 ## 9. Exit criteria
 
-- [ ] T07 and T08 green; the out-of-service cases of T02/T06 re-run through the real services.
+- [x] T07 and T08 green; the out-of-service cases of T02/T06 re-run through the real services.
 - [ ] **The 10-step minimum demo works end to end on the deployed app on a physical phone** (PRD M0 exit, T01).
 - [ ] Service-record entry measured at ≤ 60 s on a phone.
 - [ ] Migration `0005` applied to the deployment.
@@ -343,3 +343,24 @@ Service tests in `tests/services/` call services directly with actors from the `
 | Batch gets long (many linked faults) | `faultIds` capped at 20; each resolve is one statement; well under D1's limits |
 | Machine detail page is heavy to render (long history) | First page of history only (≤ 50 rows), "Load more"; CPU checked in P5-43 |
 | A future `db:generate` drops the hand-written triggers | Comment in `schema.ts`; T08 #7 fails if the triggers are missing |
+
+## 12. Implementation notes (decided while building)
+
+| Decision | Detail | Date |
+|---|---|---|
+| Migration `0005` | Generated, then reordered by hand (`service_records` before `faults`) and the two append-only triggers added at the end. Two extra partial indexes support the history page: `service_records_corrects` (corrections both ways) and `faults_resolved_by` (linked faults). `schema.ts` points at the migration for the triggers | 2026-11-23 |
+| Test resets and the triggers | `resetFaultsStatements()` (`tests/helpers/seed.ts`) drops `service_records_no_delete`, deletes corrections first (the self-reference is `ON DELETE RESTRICT`, checked per row), then everything, and recreates the trigger, all in one batch. Test-only | 2026-11-23 |
+| Report a fault | Always goes through `withMachineWrite`, even "still usable" (the bump makes the board show *Issue reported*). Statement 1 re-checks that the machine still has the status the plan was built from and that the reporter is still active, so "already out of service" keeps its reason (D3) and a suspended reporter writes nothing. The active session ends as `machine_down`, `ended_by` = the reporter. Replays must match reporter and machine (`IDEMPOTENCY_MISMATCH`) | 2026-11-23 |
+| Status services | Set out / update details / return each re-check inside statement 1 that the actor is still active staff (`staffActiveSql`). Return to service checks `NOT EXISTS (open out-of-service fault)` both before (to return the ids) and inside the swap; refusals carry `details.faultIds`. An already-available machine is returned unchanged (a double-tapped Return is harmless). `expectedBackAt` must be in the future (1 min skew) | 2026-11-23 |
+| Service record batch | Statement 1 (the token swap) re-checks: not retired, actor active staff, performer active staff/admin, and every linked fault still open on this machine (a `COUNT(*) = n`). Then: insert the record, resolve the faults, and with `returned_to_service` (not for corrections) the self-guarding return, which keeps the token of the swap rather than writing a second one. Validation order: replay → `NOT_SUPPORTED_YET` → `FUTURE_DATE` → `CORRECTION_NO_EFFECTS` → `INVALID_PERFORMER` → `INVALID_CORRECTION` → `INVALID_FAULT` | 2026-11-23 |
+| New error codes | `NOT_OUT_OF_SERVICE`, `OPEN_FAULTS` (409); `FUTURE_DATE`, `INVALID_PERFORMER`, `INVALID_FAULT`, `INVALID_CORRECTION`, `CORRECTION_NO_EFFECTS`, `NOT_SUPPORTED_YET` (400). `OPEN_OOS_FAULT` and `MACHINE_OUT_OF_SERVICE` (staff "set out" on an out machine) are reused. P5-12: there is no shared client error map; services word their messages for users and forms show them as-is | 2026-11-23 |
+| History cursor | `<performed_at>.<id>` of the last row; order `performed_at DESC, id DESC`. Linked faults and corrections are read for the whole machine and filtered in memory (no `IN` list against D1's 100-parameter limit). Machine detail is one read batch (machine, requirements, 20 sessions) plus open faults and the history page in parallel, not literally one batch | 2026-11-23 |
+| Batched column names again | Machine detail's session list joins `members`, so `machine_sessions.id` and `members.id` clashed in the batch (technologies.md §16) and the times shifted. The member columns are aliased | 2026-11-23 |
+| Times entered in forms | `toDateTimeLocal()` / `fromDateTimeLocal()` (`src/lib/format.ts`) convert between `<input type="datetime-local">` and UTC ms in the makerspace's time zone (DST overlap → the earlier instant). The client converts before calling the action; "Earlier…" has `max` = now | 2026-11-23 |
+| Log service → machine detail | The action redirects to `/console/machines/<id>?logged=available|out_of_service|correction`; `<FlashToast>` shows the toast once (stable toast id: dev Strict Mode runs effects twice) and removes the parameter | 2026-11-23 |
+| Member app toasts | The member layout had no `<Toaster>`, so the pass's toasts (session start/end since Phase 4, and now "Thanks, staff can see this in the console") never showed. Added | 2026-11-23 |
+| Machines list | Rows now open machine detail; "Edit machine" is a button there. The catalog E2E follows that path to retire | 2026-11-23 |
+| Fault queue | No auto-refresh (each refresh is a billable render; Phase 6 adds console polling). The nav count is read once per request (React `cache`) and is as fresh as the last full page load, since layouts don't re-render on client navigation. Q3 is implemented: cards say "N other open reports on this machine" | 2026-11-23 |
+| Board | One more read in the 200 batch: distinct machine ids with an open "still usable" fault. `issueReported` is false on out-of-service tiles | 2026-11-23 |
+| Board tile label | The tile's `aria-label` includes "estimated free 2:04 PM", formatted in both renders; the server's and the browser's time-zone data gave times an hour apart for America/Edmonton, so the full E2E run failed on a hydration mismatch whenever another spec had a session running. The `<article>` now has `suppressHydrationWarning`, like the visible time text (Phase 4 §11) | 2026-11-23 |
+| Not done here | P5-41 (physical phone on the deployment, screen recording), P5-42 (≤ 60 s timing on a phone), P5-43 (`cpuTime` in Workers Logs) and applying `0005` to the deployment (`npm run db:migrate:remote`, then `npm run deploy`) need the deployed app and a person with a phone | 2026-11-23 |
