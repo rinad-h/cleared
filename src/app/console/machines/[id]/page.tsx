@@ -3,6 +3,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronLeft, ClipboardPen, MapPin, Pencil } from "lucide-react";
 import { MachineStatusBadge, RequirementChip, SupervisedChip } from "@/components/catalog/machine-chips";
+import { CheckupActiveToggle, CheckupDialog } from "@/components/checkups/checkup-forms";
+import { CheckupBadge, dueText, intervalText, lastDoneText } from "@/components/checkups/checkup-parts";
 import { FaultCard } from "@/components/faults/fault-card";
 import { FlashToast } from "@/components/flash-toast";
 import { Gate } from "@/components/gate";
@@ -35,6 +37,7 @@ const FLASH: Record<string, string> = {
   available: "Logged. Machine is now Available.",
   out_of_service: "Logged. Machine is still out of service.",
   correction: "Correction logged.",
+  checkup: "Checkup logged.",
 };
 
 /** Machine detail (Phase 5 §7.2, PRD 8.2): status controls, open faults, sessions and the service history. */
@@ -135,6 +138,47 @@ async function MachineDetail({ params, searchParams }: Pick<PageProps<"/console/
             {detail.openFaults.map((f) => (
               <li key={f.id}>
                 <FaultCard fault={f} showMachine={false} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section aria-labelledby="checkups-title" className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 id="checkups-title" className="text-lg font-semibold">
+            Checkups
+          </h2>
+          {machine.status !== "retired" ? <CheckupDialog machineId={machine.id} /> : null}
+        </div>
+        {detail.checkups.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No recurring checkups.</p>
+        ) : (
+          <ul aria-label="Checkups on this machine" className="divide-y rounded-lg border">
+            {detail.checkups.map((c) => (
+              <li key={c.id} className="flex flex-col gap-2 p-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0 space-y-1 text-sm">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <CheckupBadge state={c.state} active={c.active} />
+                    <span className="font-medium break-words">{c.name}</span>
+                  </div>
+                  <p className="text-muted-foreground">
+                    {intervalText(c.intervalDays)} · {lastDoneText(c.lastDoneAt, tz)}
+                    {c.active ? ` · ${dueText(c.nextDueAt, now, tz)}` : ""}
+                  </p>
+                  {c.instructions ? <p className="whitespace-pre-line break-words text-muted-foreground">{c.instructions}</p> : null}
+                </div>
+                <div className="flex shrink-0 flex-wrap gap-1">
+                  {c.active && machine.status !== "retired" ? (
+                    <Button asChild variant="outline" size="sm">
+                      <Link href={`/console/machines/${machine.id}/service/new?checkupId=${c.id}`} prefetch={false}>
+                        Log checkup
+                      </Link>
+                    </Button>
+                  ) : null}
+                  <CheckupDialog machineId={machine.id} checkup={c} />
+                  <CheckupActiveToggle checkup={c} />
+                </div>
               </li>
             ))}
           </ul>

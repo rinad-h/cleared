@@ -310,7 +310,16 @@ export function StaffEndDialog({
 }
 
 /** Staff on the member page: end one of the member's active sessions. */
-export function EndSessionButton({ sessionId, machineName }: { sessionId: string; machineName: string }) {
+export function EndSessionButton({
+  sessionId,
+  machineName,
+  onEnded,
+}: {
+  sessionId: string;
+  machineName: string;
+  /** Called after the session ended (the console re-polls its live data). */
+  onEnded?: () => void;
+}) {
   const hydrated = useHydrated();
   const [pending, startTransition] = useTransition();
   return (
@@ -321,8 +330,10 @@ export function EndSessionButton({ sessionId, machineName }: { sessionId: string
       onConfirm={() =>
         startTransition(async () => {
           const result = await endSession({ sessionId });
-          if (result.ok) toast.success("Session ended.");
-          else toast.error(result.error);
+          if (result.ok) {
+            toast.success("Session ended.");
+            onEnded?.();
+          } else toast.error(result.error);
         })
       }
     />

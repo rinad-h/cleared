@@ -26,10 +26,10 @@ const ITEMS: { href: string; label: string; icon: LucideIcon; adminOnly?: boolea
   { href: "/console/faults", label: "Faults", icon: TriangleAlert },
   { href: "/console/checkups", label: "Checkups", icon: ClipboardCheck },
   { href: "/console/machines", label: "Machines", icon: Wrench },
-  { href: "/console/rooms", label: "Rooms", icon: DoorOpen },
   { href: "/console/members", label: "Members", icon: Users },
-  { href: "/console/certifications", label: "Certifications", icon: Award, adminOnly: true },
+  { href: "/console/rooms", label: "Rooms", icon: DoorOpen },
   { href: "/console/labels", label: "Labels", icon: QrCode },
+  { href: "/console/certifications", label: "Certifications", icon: Award, adminOnly: true },
   { href: "/console/settings", label: "Settings", icon: Settings, adminOnly: true },
 ];
 
@@ -38,6 +38,8 @@ type NavProps = {
   isAdmin?: boolean;
   /** Open faults, shown next to "Faults" (as of the last full page load). */
   faultCount?: number | null;
+  /** Overdue checkups, shown next to "Checkups" (as of the last full page load). */
+  checkupCount?: number | null;
   onNavigate?: () => void;
 };
 
@@ -54,7 +56,7 @@ function NavListWithPathname(props: NavProps) {
   return <NavItems pathname={usePathname()} {...props} />;
 }
 
-function NavItems({ pathname, isAdmin = false, faultCount, onNavigate }: NavProps & { pathname: string | null }) {
+function NavItems({ pathname, isAdmin = false, faultCount, checkupCount, onNavigate }: NavProps & { pathname: string | null }) {
   return (
     <nav aria-label="Staff console" className="flex flex-col gap-1 p-3">
       <ul className="flex flex-col gap-1">
@@ -83,6 +85,12 @@ function NavItems({ pathname, isAdmin = false, faultCount, onNavigate }: NavProp
                     <span className="sr-only"> open</span>
                   </span>
                 ) : null}
+                {href === "/console/checkups" && checkupCount ? (
+                  <span className="ml-auto rounded-full bg-status-not-cleared px-2 text-xs text-status-not-cleared-foreground">
+                    {checkupCount}
+                    <span className="sr-only"> overdue</span>
+                  </span>
+                ) : null}
               </Link>
             </li>
           );
@@ -102,12 +110,14 @@ function NavItems({ pathname, isAdmin = false, faultCount, onNavigate }: NavProp
 }
 
 /** Sidebar navigation (desktop). */
-export function ConsoleSidebar({ isAdmin, faultCount }: { isAdmin?: boolean; faultCount?: number | null }) {
-  return <NavList isAdmin={isAdmin} faultCount={faultCount} />;
+type Counts = { isAdmin?: boolean; faultCount?: number | null; checkupCount?: number | null };
+
+export function ConsoleSidebar(props: Counts) {
+  return <NavList {...props} />;
 }
 
 /** Drawer navigation (phone). */
-export function ConsoleDrawer({ isAdmin, faultCount }: { isAdmin?: boolean; faultCount?: number | null }) {
+export function ConsoleDrawer(props: Counts) {
   const [open, setOpen] = useState(false);
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -118,7 +128,7 @@ export function ConsoleDrawer({ isAdmin, faultCount }: { isAdmin?: boolean; faul
       </SheetTrigger>
       <SheetContent side="left" className="w-64 bg-sidebar p-0" aria-describedby={undefined}>
         <SheetTitle className="px-6 pt-5 text-base">Staff console</SheetTitle>
-        <NavList isAdmin={isAdmin} faultCount={faultCount} onNavigate={() => setOpen(false)} />
+        <NavList {...props} onNavigate={() => setOpen(false)} />
       </SheetContent>
     </Sheet>
   );

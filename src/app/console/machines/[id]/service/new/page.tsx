@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { formatAge } from "@/components/faults/fault-card";
+import { dueText } from "@/components/checkups/checkup-parts";
 import { Gate } from "@/components/gate";
 import { ServiceForm } from "@/components/machines/service-form";
 import { getMachineDetail, getServiceRecord, listStaff } from "@/data/machines";
@@ -12,7 +13,10 @@ import { ServiceError } from "@/server/domain/errors";
 
 export const metadata: Metadata = { title: "Log service" };
 
-/** Log service (FR-15, Phase 5 §7.2), or correct a record with `?corrects=<id>`. `?faultIds=` pre-links faults. */
+/**
+ * Log service (FR-15, Phase 5 §7.2), or correct a record with `?corrects=<id>`.
+ * `?faultIds=` pre-links faults; `?checkupId=` starts a scheduled checkup for it (Phase 6).
+ */
 export default function LogServicePage({ params, searchParams }: PageProps<"/console/machines/[id]/service/new">) {
   return (
     <Gate area="staff">
@@ -82,6 +86,19 @@ async function LogService({
               }))
         }
         preselectedFaultIds={asList(query.faultIds)}
+        checkups={
+          original
+            ? []
+            : detail.checkups
+                .filter((c) => c.active)
+                .map((c) => ({
+                  id: c.id,
+                  name: c.name,
+                  instructions: c.instructions,
+                  dueLabel: dueText(c.nextDueAt, detail.serverNow, tz),
+                }))
+        }
+        preselectedCheckupId={typeof query.checkupId === "string" ? query.checkupId : null}
         correction={
           original
             ? {
