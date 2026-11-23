@@ -46,8 +46,9 @@ for (const file of committable) {
   if (/^(cleared\.config\.json|wrangler\.deploy\..+)$/.test(base)) {
     fail(`${file}: holds your deployment values and must not be committed`);
   }
-  if (base.endsWith(".sql") && !file.startsWith("drizzle/")) {
-    fail(`${file}: SQL files outside drizzle/ (e.g. database backups with personal data) must not be committed`);
+  // drizzle/ holds migrations; scripts/sql/ holds the runbook's maintenance SQL (Phase 7).
+  if (base.endsWith(".sql") && !file.startsWith("drizzle/") && !/^scripts\/sql\/[^/]+\.sql$/.test(file)) {
+    fail(`${file}: SQL files outside drizzle/ and scripts/sql/ (e.g. database backups with personal data) must not be committed`);
   }
 }
 

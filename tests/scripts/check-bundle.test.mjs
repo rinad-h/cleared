@@ -28,6 +28,8 @@ const cases = [
   ["a tracked .dev.vars", () => { box.write(".dev.vars", "X=1"); box.track(".dev.vars"); }, /\.dev\.vars must not be committed/],
   ["a committable cleared.config.json", () => box.write("sub/cleared.config.json", "{}"), /deployment values/],
   ["a database dump outside drizzle/", () => box.write("backup-2026-01-01.sql", "INSERT ..."), /SQL files outside drizzle/],
+  ["a database dump under scripts/sql/", () => box.write("scripts/sql/backups/cleared.sql", "INSERT ..."), /SQL files outside drizzle/],
+  ["a database dump elsewhere under scripts/", () => box.write("scripts/cleared-2026-01-01.sql", "INSERT ..."), /SQL files outside drizzle/],
   ["a real database id in wrangler.jsonc", () => box.write("wrangler.jsonc", wrangler().replace("<database-id>", UUID_A)), /real id|placeholder <database-id>/],
   ["a real subdomain in wrangler.jsonc", () => box.write("wrangler.jsonc", wrangler().replaceAll("<your-subdomain>", "acme")), /<your-subdomain>/],
   ["an account_id in wrangler.jsonc", () => box.write("wrangler.jsonc", wrangler().replace('"workers_dev": true,', '"workers_dev": true, "account_id": "abc",')), /account_id/],
@@ -39,6 +41,12 @@ const cases = [
     box.write("docs/notes.md", "see https://cleared.acme.workers.dev");
   }, /deployment values from cleared\.config\.json/],
 ];
+
+test("allows the runbook's maintenance SQL in scripts/sql/", () => {
+  box.write("scripts/sql/retention-purge.sql", "DELETE FROM session WHERE expires_at < 0;");
+  const { code, out } = check();
+  assert.equal(code, 0, out);
+});
 
 for (const [name, plant, message] of cases) {
   test(`fails on ${name}`, () => {

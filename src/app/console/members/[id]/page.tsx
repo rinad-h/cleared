@@ -94,7 +94,10 @@ async function MemberDetail({ params }: Pick<PageProps<"/console/members/[id]">,
       />
 
       <div className="space-y-3">
-        <h2 className="text-lg font-semibold">Sessions</h2>
+        <div className="flex flex-wrap items-baseline gap-x-3">
+          <h2 className="text-lg font-semibold">Sessions</h2>
+          <p className="text-sm text-muted-foreground">Self-reported by members</p>
+        </div>
         {member.activeSessions.length > 0 ? (
           <SessionList
             sessions={member.activeSessions}

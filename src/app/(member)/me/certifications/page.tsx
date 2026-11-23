@@ -35,7 +35,10 @@ async function MyCertifications() {
           ))}
         </ul>
       )}
-      <h2 className="pt-4 text-lg font-semibold">Recent sessions</h2>
+      <div className="space-y-1 pt-4">
+        <h2 className="text-lg font-semibold">Recent sessions</h2>
+        <p className="text-sm text-muted-foreground">Self-reported: the sessions you started on machine passes.</p>
+      </div>
       <SessionList sessions={recentSessions} now={now} timeZone={tz} label="Recent sessions" />
     </section>
   );

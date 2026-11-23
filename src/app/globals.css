@@ -165,3 +165,18 @@
     color: #000 !important;
   }
 }
+
+/*
+ * P7-06: with "reduce motion" on, nothing pulses, slides or fades (dialogs,
+ * sheets, button state changes). The pass clock still ticks: that's text, not motion.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -88,12 +88,14 @@ export function ConsoleLive({ initial, etag }: { initial: ConsoleData; etag: str
           href="/console/checkups?tab=soon"
           icon={ClipboardCheck}
           label="Checkups due soon"
+          detail="Advisory"
           count={c.counts.checkupsDueSoon}
         />
         <CountCard
           href="/console/checkups?tab=overdue"
           icon={ClipboardCheck}
           label="Checkups overdue"
+          detail="Advisory"
           count={c.counts.checkupsOverdue}
           alert={c.counts.checkupsOverdue > 0}
         />

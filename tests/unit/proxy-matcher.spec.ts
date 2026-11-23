@@ -11,7 +11,7 @@ describe("proxy matcher (P1-20)", () => {
       "/setup",
       "/join/:path*",
     ]);
-    for (const publicPath of ["/help", "/sign-in", "/sign-up", "/api"]) {
+    for (const publicPath of ["/help", "/terms", "/privacy", "/sign-in", "/sign-up", "/api"]) {
       expect(config.matcher.some((m) => m.startsWith(publicPath))).toBe(false);
     }
   });

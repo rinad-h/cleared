@@ -151,6 +151,7 @@ async function MachineDetail({ params, searchParams }: Pick<PageProps<"/console/
           </h2>
           {machine.status !== "retired" ? <CheckupDialog machineId={machine.id} /> : null}
         </div>
+        <p className="text-sm text-muted-foreground">Advisory: a checkup never stops anyone using the machine.</p>
         {detail.checkups.length === 0 ? (
           <p className="text-sm text-muted-foreground">No recurring checkups.</p>
         ) : (
@@ -186,9 +187,12 @@ async function MachineDetail({ params, searchParams }: Pick<PageProps<"/console/
       </section>
 
       <section aria-labelledby="active-title" className="space-y-3">
-        <h2 id="active-title" className="text-lg font-semibold">
-          Active session
-        </h2>
+        <div className="flex flex-wrap items-baseline gap-x-3">
+          <h2 id="active-title" className="text-lg font-semibold">
+            Active session
+          </h2>
+          <p className="text-sm text-muted-foreground">Self-reported by members</p>
+        </div>
         {detail.activeSession ? (
           <div className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm">
@@ -199,7 +203,7 @@ async function MachineDetail({ params, searchParams }: Pick<PageProps<"/console/
             <EndSessionButton sessionId={detail.activeSession.id} machineName={machine.name} />
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">Nobody is using this machine.</p>
+          <p className="text-sm text-muted-foreground">No recorded session right now.</p>
         )}
       </section>
 
@@ -211,9 +215,12 @@ async function MachineDetail({ params, searchParams }: Pick<PageProps<"/console/
       </section>
 
       <section aria-labelledby="sessions-title" className="space-y-3">
-        <h2 id="sessions-title" className="text-lg font-semibold">
-          Recent sessions
-        </h2>
+        <div className="flex flex-wrap items-baseline gap-x-3">
+          <h2 id="sessions-title" className="text-lg font-semibold">
+            Recent sessions
+          </h2>
+          <p className="text-sm text-muted-foreground">Self-reported by members</p>
+        </div>
         {detail.recentSessions.length === 0 ? (
           <p className="text-sm text-muted-foreground">No sessions yet.</p>
         ) : (

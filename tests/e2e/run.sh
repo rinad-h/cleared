@@ -82,10 +82,21 @@ set -e
 # dev's Cache Components reports, or an error logged by log()) don't always fail
 # a page visibly. Fail on them.
 sleep 1
+# shell.spec.ts's CSRF probe (P7-52) makes two expected errors: an unknown
+# all-zero action id, and the origin check refusing csrf-probe.invalid. Drop
+# exactly those blocks before scanning.
+awk '
+  /Failed to find Server Action "0+"/ { skip = 3 }
+  /does not match `origin` header with value `csrf-probe\.invalid`/ { probe = 1; next }
+  probe && /^}/ { probe = 0; next }
+  probe { next }
+  skip > 0 { skip--; next }
+  { print }
+' "$tmp/server.log" > "$tmp/server-scan.log"
 error_pattern="digest: '|^[A-Za-z]*Error: |⨯ |\"level\":\"error\""
-if grep -qE "$error_pattern" "$tmp/server.log"; then
+if grep -qE "$error_pattern" "$tmp/server-scan.log"; then
   echo "E2E: the dev server logged errors:" >&2
-  { grep -nE -A12 "$error_pattern" "$tmp/server.log" || true; } | head -n 80 >&2 || true
+  { grep -nE -A12 "$error_pattern" "$tmp/server-scan.log" || true; } | head -n 80 >&2 || true
   status=1
 fi
 

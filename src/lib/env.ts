@@ -14,7 +14,7 @@ const DEV_OVERRIDABLE = [
   "BETTER_AUTH_SECRET",
 ] as const;
 
-export type AppEnv = CloudflareEnv & { ENABLE_SPIKES?: string };
+export type AppEnv = CloudflareEnv;
 
 /**
  * The Worker's bindings and variables for this request.

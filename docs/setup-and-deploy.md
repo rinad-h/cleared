@@ -205,11 +205,11 @@ Then:
 
 ```bash
 npm run db:migrate         # apply all migrations to the LOCAL D1 (in .wrangler/state)
-npm run db:seed            # optional: clearly fake demo data ("Demo Makerspace")
+npm run db:seed            # optional, after Setup: clearly fake demo data (docs/seed.md)
 npm run dev                # http://localhost:3000
 ```
 
-- **The dev server only listens on this computer** (`127.0.0.1`), so the dev-only pages (the spikes) aren't reachable from the café or campus Wi-Fi. `http://localhost:3000` works as usual.
+- **The dev server only listens on this computer** (`127.0.0.1`), so it isn't reachable from the café or campus Wi-Fi. `http://localhost:3000` works as usual.
 - The first account you create can complete **Setup** and becomes admin.
 - **Test the real Workers runtime** before deploying: `npm run preview` builds with OpenNext and serves on `http://localhost:8787` (if that port is taken: `npm run preview -- --port 8799`). Set `PUBLIC_BASE_URL` and `BETTER_AUTH_URL` to the preview URL in `.dev.vars` while previewing.
 - **Don't put secrets in `.env`, `.env.local` or similar.** OpenNext can embed `.env*` values into the deployed bundle. Use `.dev.vars` locally and Worker secrets in Cloudflare.
@@ -284,7 +284,7 @@ Cleared has one deployment. There's no staging Worker or database to try changes
 - **Until real users exist** (the build phases, before a pilot), the deployment itself is the test bed: deploy each phase and do its manual checks there.
 - **Once it has real users,** test every change locally before deploying: `npm run check`, `npm run test:e2e`, and `npm run preview` (the real Workers runtime, `localhost:8787`). Then migrate and deploy ([section 12](#12-everyday-deploys)).
 - **Undo** a bad code deploy with `npx wrangler rollback` (Workers keeps 30 days of versions), and a bad migration or data change with D1 Time Travel: `npm run remote -- d1 time-travel restore cleared --timestamp=<ISO time before the change>` (last 7 days; replaces the whole database, [section 14](#14-operating-it-logs-usage-backups)).
-- **Measuring CPU on the deployment** (Phase 0 spikes): the spike routes answer 404 unless the `ENABLE_SPIKES` Worker secret is `1`. Turn them on with `npm run remote -- secret put ENABLE_SPIKES` (enter `1`), measure, then `npm run remote -- secret delete ENABLE_SPIKES`.
+- **Measuring CPU on the deployment** (Phase 7 P7-30…33): open the real pages and read `cpuTime` per invocation in Dashboard → Workers & Pages → `cleared` → Logs. The Phase 0 spike routes were deleted in Phase 7; if `npm run remote -- secret list` still shows `ENABLE_SPIKES`, delete it with `npm run remote -- secret delete ENABLE_SPIKES`.
 
 ---
 
@@ -409,6 +409,10 @@ Daily free limits reset at **00:00 UTC**. If you hit one, the app shows a "back 
 | `npm run db:generate` | New migration from `src/db/schema.ts` changes |
 | `npm run db:migrate` | Apply migrations to the local D1 |
 | `npm run db:seed` | Load fake demo data locally |
+| `npm run db:seed -- --reset --i-know` | Back up, clear and re-seed the local demo data (only when the makerspace name starts with "Demo"; [`seed.md`](./seed.md)) |
+| `bash scripts/reset-demo.sh --i-know` | The same on the deployment (backup to `~/cleared-backups/` first) |
+| `npx tsx scripts/set-password.ts <email> <temp-password> [--local]` | Set a temporary password for a member (no email reset) |
+| `npx tsx scripts/make-admin.ts <email> [--local]` | Make a member an active admin (admin lock-out) |
 | `npm run cf-typegen` | Regenerate binding types after editing `wrangler.jsonc` |
 | `npm run config:render` | Write `wrangler.deploy.jsonc` from `wrangler.jsonc` + `cleared.config.json` |
 | `npm run remote -- <args>` | Run Wrangler against your deployment config (needed for remote D1 commands) |

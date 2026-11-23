@@ -122,10 +122,18 @@ export function SignUpForm({ next }: { next: string }) {
         {pending ? "Creating account…" : "Create account"}
       </Button>
       <p className="text-sm text-muted-foreground">
-        Cleared keeps your name, email and machine-use records. It is a record-keeping tool, not a safety
+        By creating an account you agree to the{" "}
+        <Link href="/terms" prefetch={false} className="underline underline-offset-4">
+          Terms of use
+        </Link>{" "}
+        and the{" "}
+        <Link href="/privacy" prefetch={false} className="underline underline-offset-4">
+          Privacy notice
+        </Link>
+        . Cleared keeps your name, email and machine-use records. It is a record-keeping tool, not a safety
         system:{" "}
         <Link href="/help" prefetch={false} className="underline underline-offset-4">
-          see what it does and doesn&apos;t do
+          see what Cleared does and doesn&apos;t do
         </Link>
         .
       </p>

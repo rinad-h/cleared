@@ -573,7 +573,7 @@ Node.js 22+, npm, TypeScript (strict), ESLint (`eslint-config-next`), Wrangler 4
 | `test:e2e` | Playwright on an isolated D1 |
 | `db:generate` | drizzle-kit migration from `schema.ts` |
 | `db:migrate` / `db:migrate:remote` | Apply migrations locally / to the deployment |
-| `db:seed` | Clearly fake demo data (local) |
+| `db:seed` | Clearly fake demo data; `-- --reset --i-know` resets it (`scripts/reset-demo.sh` on the deployment; [`seed.md`](./seed.md)) |
 
 ### 11.3 Checks and deploys (local, no CI/CD)
 
@@ -675,6 +675,29 @@ A session is active while `ended_at IS NULL AND now < expected_end_at`. Expired-
 | Sign in | 1 | ~5 | ~3 |
 | Sign up | 1 | ~4 | ~4 |
 
+**Measured (Phase 7 P7-42, 2026-11-23)** by `tests/services/query-audit.spec.ts` on local D1 (the same `meta.rows_read` / `rows_written` counters the free plan bills), with 120 members, 4 certifications, 15 past sessions per machine, 8 service records per machine and a few open faults. Service reads only: add ~2–4 rows for the request's session lookup (`getActor()`: Better Auth's cookie cache, then the `members` row) on every signed-in request. Run `npx vitest run tests/services/query-audit.spec.ts --reporter=verbose` to re-measure.
+
+| Operation | Rows read, 10 machines | Rows read, 60 machines | Rows written |
+|---|---|---|---|
+| Pass page (`/m/[token]`) | 15 | 15 | 0 |
+| Board page / `/api/status-board` 200 | 37 | 155 | 0 |
+| `/api/status-board` or `/api/console` 304 | 1 | 1 | 0 |
+| My certifications | 13 | 13 | 0 |
+| Console home / `/api/console` 200 | 50 | 319 | 0 |
+| Fault queue | 10 | 60 | 0 |
+| Checkups | 12 | 60 | 0 |
+| Machine detail | 103 | 105 | 0 |
+| Service history page | 43 | 43 | 0 |
+| Members list / search (120 members) | 103 / 133 | 103 / 133 | 0 |
+| Member detail | 20 | 20 | 0 |
+| Start session | 19 | 19 | 9 |
+| End session | 7 | 7 | 2 |
+| Report fault | 6 | 6 | 7 |
+| Sign off | 8 | 8 | 5 |
+| Log service record | 10 | 10 | 6 |
+
+Projection for the pilot scenario below with these numbers: 1,500 page views × ~40 rows + 8 board viewers × 1,200 polls × (mostly 304s at 1 row, ~5% 200s at ~40 rows) + 3 consoles × 1,200 polls × (1 row, ~5% at ~50) + 250 actions × ~15 rows ≈ **0.1M rows read/day (2% of 5M)** and ~2k rows written (2%); requests are unchanged (~16%). The P7-43 replay script (a whole pilot day against `npm run preview`) wasn't built: the per-operation measurements above make the projection directly.
+
 ### 13.2 Scenarios
 
 | Scenario | Assumptions | Requests/day | Rows read/day | Rows written/day |
@@ -763,6 +786,9 @@ Things that are known to matter for Next.js 16 + OpenNext + D1 + Better Auth on 
 | A Turbopack dev cache left by an interrupted E2E run can put every page into an "HMR hash mismatch" reload loop | `tests/e2e/run.sh` deletes `.next-e2e` before starting |
 | Production builds (no Cache Components) try to prerender any page that hasn't made a dynamic access yet; touching D1 (`getDb()`) first then fails the build ("Error occurred prerendering page") | Read the session (`getActor()`) or call `connection()` **before** `getDb()` in page data functions (`src/data/*`) |
 | Local `wrangler d1 execute --json` doesn't report `meta.changes` | Scripts that need a count use `RETURNING` and count rows (`scripts/set-password.ts`) |
+| `wrangler d1 execute --file` runs the whole file as **one transaction** (locally a D1 batch; remotely an import that rolls back on failure), but remotely returns no per-statement results | Multi-step data changes (the demo reset) go in one file; counts come from a separate `--command` query |
+| SQLite checks a **self-referencing** foreign key row by row on `DELETE` (`service_records.corrects_record_id`) | Delete the corrections before the originals (`scripts/lib/seed.mjs` reset) |
+| `wrangler d1 export --local` ignores `--persist-to` (always `.wrangler/state`) | The local demo reset backs up by copying the D1 files instead |
 | drizzle-kit can't put `COLLATE NOCASE` on a column, and SQLite names the **column** (`UNIQUE constraint failed: rooms.name`), not the index, when a `COLLATE NOCASE` unique index on that column is violated | Case-insensitive uniqueness is a unique index on `name COLLATE NOCASE`; `isUniqueViolation(err, …)` (`src/server/db-errors.ts`) matches the `table.column` form (and the index name, for pure expression indexes) |
 | A drizzle `db.batch()` of **reads** returns rows keyed by column name, so two selected columns with the same name (`machines.name`, `rooms.name`) overwrite each other and the values shift | Alias clashing columns in batched selects (``sql`${rooms.name}`.as("room_name")``); single `.get()` / `.all()` queries aren't affected |
 | An object with a `then` property is a thenable: `await`ing it calls `then` | Plans returned from async callbacks (e.g. `withMachineWrite`'s) never use a field called `then` (it's `guarded`) |
