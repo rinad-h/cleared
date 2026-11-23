@@ -22,7 +22,7 @@ export type BoardMachine = {
   /** Only when out of service. ISO times. */
   outOfService: { reason: OutOfServiceReason; since: string; note: string | null; expectedBackAt: string | null } | null;
   supervisionRequired: boolean;
-  /** An open fault that didn't take the machine out of service (Phase 5; always false until then). */
+  /** An open "still usable" fault on a machine that isn't out of service (Phase 5). Never the text or reporter. */
   issueReported: boolean;
   /** The viewer holds every required certification (ignores out of service and supervision, D4). */
   clearedForMe: boolean;
@@ -60,6 +60,8 @@ export type BoardInput = {
   viewer: Viewer;
   /** The viewer's grants (all of them; validity is checked here). */
   grants: readonly GrantRow[];
+  /** Machines with an open fault that didn't take them out of service (Phase 5). */
+  issueMachineIds?: ReadonlySet<string>;
 };
 
 const iso = (ms: number) => new Date(ms).toISOString();
@@ -120,7 +122,7 @@ export function buildBoard(input: BoardInput): { board: StatusBoard; validUntil:
             }
           : null,
       supervisionRequired: m.supervised,
-      issueReported: false,
+      issueReported: !oos && (input.issueMachineIds?.has(m.id) ?? false),
       clearedForMe: pass.certifiedForMachine,
     };
     const list = machinesByRoom.get(m.roomId) ?? [];

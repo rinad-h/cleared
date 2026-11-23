@@ -34,6 +34,14 @@ export const ERROR_CODES = [
   "PASS_CHANGED",
   "SESSION_ENDED",
   "SESSION_AT_MAX",
+  "NOT_OUT_OF_SERVICE",
+  "OPEN_FAULTS",
+  "FUTURE_DATE",
+  "INVALID_PERFORMER",
+  "INVALID_FAULT",
+  "INVALID_CORRECTION",
+  "CORRECTION_NO_EFFECTS",
+  "NOT_SUPPORTED_YET",
   "CONFLICT_RETRY",
   "RATE_LIMITED",
   "DAILY_LIMIT",
@@ -58,6 +66,8 @@ export type ErrorDetails = {
   estFreeAt?: string;
   /** `NOT_CLEARED`: the actor's own pass status. */
   passStatus?: "OUT_OF_SERVICE" | "NOT_CLEARED" | "SUPERVISION_REQUIRED" | "CLEARED";
+  /** `OPEN_OOS_FAULT` / `OPEN_FAULTS` (staff only): the open faults that block the change. */
+  faultIds?: string[];
 };
 
 export class ServiceError extends Error {
@@ -165,6 +175,14 @@ const HTTP_STATUS: Record<ErrorCode, number> = {
   PASS_CHANGED: 409,
   SESSION_ENDED: 409,
   SESSION_AT_MAX: 409,
+  NOT_OUT_OF_SERVICE: 409,
+  OPEN_FAULTS: 409,
+  FUTURE_DATE: 400,
+  INVALID_PERFORMER: 400,
+  INVALID_FAULT: 400,
+  INVALID_CORRECTION: 400,
+  CORRECTION_NO_EFFECTS: 400,
+  NOT_SUPPORTED_YET: 400,
   CONFLICT_RETRY: 409,
   RATE_LIMITED: 429,
   DAILY_LIMIT: 503,

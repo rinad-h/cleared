@@ -10,6 +10,7 @@ import type { Actor } from "@/server/domain/actor";
 import type { MachineStatus } from "@/server/domain/enums";
 import { ServiceError, type FieldErrors } from "@/server/domain/errors";
 import { newToken } from "@/server/domain/identity";
+import { anyOpenFaultSql } from "@/server/domain/machine-status";
 import { parse } from "@/server/domain/parse";
 import { tokenGuard, withMachineWrite } from "@/server/machine-write";
 import { endMachineSessionsSql } from "@/server/services/sessions";
@@ -38,6 +39,8 @@ const certInactive = () =>
     requirementIds: ["Only active certifications can be required."],
   });
 const retired = () => new ServiceError("MACHINE_RETIRED", "This machine is retired and can't be changed.");
+const openFaults = () =>
+  new ServiceError("OPEN_FAULTS", "This machine has open faults. Log a service record that resolves them, then retire it.");
 
 /* ------------------------------------------------------------------ reads */
 
@@ -234,7 +237,7 @@ export async function updateMachine(db: Db, actor: Actor, rawInput: MachineUpdat
       if (machine.status === "retired") throw retired();
       if (retire) {
         // Retiring ends the active session (`staff`, Phase 4 §4.5); the write
-        // helper already closed expired ones. Phase 5 refuses while faults are open.
+        // helper already closed expired ones. Refused while faults are open (Phase 5 D6).
         return {
           set: {
             status: "retired",
@@ -244,8 +247,9 @@ export async function updateMachine(db: Db, actor: Actor, rawInput: MachineUpdat
             statusNote: null,
             expectedBackAt: null,
           },
-          where: ne(machines.status, "retired"),
+          where: and(ne(machines.status, "retired"), sql`NOT ${anyOpenFaultSql(id)}`),
           guarded: (guard) => [endMachineSessionsSql(id, actor.memberId, now, guard)],
+          refused: () => openFaults(),
           result: undefined,
         };
       }
