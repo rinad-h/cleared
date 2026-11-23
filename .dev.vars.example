@@ -1,0 +1,22 @@
+# Local development variables for `npm run dev` / `npm run preview`.
+# Copy to .dev.vars (git-ignored) and fill in. Never put secrets in .env* files:
+# OpenNext can embed .env* values into the deployed bundle.
+
+# Override the production values from wrangler.jsonc for local work.
+ENVIRONMENT=development
+PUBLIC_BASE_URL=http://localhost:3000
+# Use http://localhost:8787 for both URLs while running `npm run preview`.
+BETTER_AUTH_URL=http://localhost:3000
+REQUIRE_EMAIL_VERIFICATION=true
+
+# Secret. Generate with: openssl rand -base64 32
+BETTER_AUTH_SECRET=replace-me
+
+# Not used locally (development prints email links instead of sending them),
+# but wrangler.jsonc lists them as required secrets.
+BREVO_API_KEY=unused-in-development
+EMAIL_FROM_ADDRESS=dev@example.invalid
+
+# Local only: shows verification/reset links at /api/dev/outbox instead of emailing them.
+# Never add this to wrangler.jsonc.
+ENABLE_DEV_OUTBOX=1
