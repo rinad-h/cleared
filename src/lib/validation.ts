@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { hasControlCharsInText } from "@/server/domain/identity";
 
 /**
  * Shared Zod schemas, used by server actions (via `parse()`) and forms.
@@ -16,12 +17,13 @@ export const clientRequestId = z.uuid();
 export const formArray = <T extends z.ZodType>(item: T) =>
   z.preprocess((value) => (value === undefined || value === null ? [] : Array.isArray(value) ? value : [value]), z.array(item));
 
-/** Trimmed text with a max length; empty strings become undefined. */
+/** Trimmed text with a max length (no control characters but newline and tab); empty strings become undefined. */
 export const optionalText = (max: number) =>
   z
     .string()
     .trim()
     .max(max)
+    .refine((v) => !hasControlCharsInText(v), "Remove the special characters.")
     .transform((s) => (s === "" ? undefined : s))
     .optional();
 

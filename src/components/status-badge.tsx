@@ -1,5 +1,9 @@
 import {
+  CalendarCheck,
+  CalendarClock,
+  CircleAlert,
   CircleCheck,
+  CircleSlash,
   CircleX,
   Clock,
   Eye,
@@ -43,6 +47,27 @@ export const STATUSES = {
     label: "Available",
     icon: CircleCheck,
     className: "bg-status-cleared text-status-cleared-foreground",
+  },
+  /** Checkups (Phase 6). Advisory: staff-facing only. */
+  overdue: {
+    label: "Overdue",
+    icon: CircleAlert,
+    className: "bg-status-not-cleared text-status-not-cleared-foreground",
+  },
+  "due-soon": {
+    label: "Due soon",
+    icon: CalendarClock,
+    className: "bg-status-supervision text-status-supervision-foreground",
+  },
+  "on-schedule": {
+    label: "On schedule",
+    icon: CalendarCheck,
+    className: "bg-status-cleared text-status-cleared-foreground",
+  },
+  inactive: {
+    label: "Inactive",
+    icon: CircleSlash,
+    className: "bg-muted text-muted-foreground",
   },
 } as const satisfies Record<string, { label: string; icon: LucideIcon; className: string }>;
 

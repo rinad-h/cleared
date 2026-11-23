@@ -1,6 +1,13 @@
 import { z } from "zod";
 import { clientRequestId, id, optionalBoolean, optionalFormArray } from "@/lib/validation";
 import { SERVICE_OUTCOMES, SERVICE_TYPES, STAFF_OUT_OF_SERVICE_REASONS } from "@/server/domain/enums";
+import { hasControlChars, hasControlCharsInText } from "@/server/domain/identity";
+
+const CONTROL_MESSAGE = "Remove the special characters.";
+/** Single-line text: no control characters at all. */
+const noControl = (v: string | undefined) => v === undefined || !hasControlChars(v);
+/** Long text: newlines and tabs are fine, other control characters aren't. */
+const noControlInText = (v: string | undefined) => v === undefined || !hasControlCharsInText(v);
 
 /**
  * Phase 5 inputs (faults, out-of-service, service records), shared by server
@@ -20,13 +27,14 @@ export const HISTORY_PAGE_MAX = 50;
 export const HISTORY_PAGE_DEFAULT = 20;
 
 /** Trimmed text that may be blank ("" → undefined), with a max length and a message. */
-const blankable = (max: number, message: string) =>
+const blankable = (max: number, message: string, multiline = false) =>
   z.preprocess(
     (v) => (v === null ? undefined : v),
     z
       .string()
       .trim()
       .max(max, message)
+      .refine(multiline ? noControlInText : noControl, CONTROL_MESSAGE)
       .transform((s) => (s === "" ? undefined : s))
       .optional(),
   );
@@ -57,7 +65,8 @@ export const ReportFaultInput = z.object({
     .string({ error: "Describe the problem." })
     .trim()
     .min(FAULT_DESCRIPTION_MIN, `Describe the problem in at least ${FAULT_DESCRIPTION_MIN} characters.`)
-    .max(FAULT_DESCRIPTION_MAX, `Keep it under ${FAULT_DESCRIPTION_MAX} characters.`),
+    .max(FAULT_DESCRIPTION_MAX, `Keep it under ${FAULT_DESCRIPTION_MAX} characters.`)
+    .refine(noControlInText, CONTROL_MESSAGE),
   /** "Unsafe or not working: take out of service". */
   takeOutOfService: optionalBoolean().transform((v) => v === true),
   /** Created when the sheet opens, so a double-tap reports once. */
@@ -111,6 +120,7 @@ export const LogServiceInput = z
             .string()
             .min(EXTERNAL_TECH_MIN, `Use at least ${EXTERNAL_TECH_MIN} characters.`)
             .max(EXTERNAL_TECH_MAX, `Keep it under ${EXTERNAL_TECH_MAX} characters.`)
+            .refine(noControl, CONTROL_MESSAGE)
             .optional(),
         )
         .optional(),
@@ -120,8 +130,9 @@ export const LogServiceInput = z
       .string({ error: "Describe what was done." })
       .trim()
       .min(WORK_DONE_MIN, `Describe what was done in at least ${WORK_DONE_MIN} characters.`)
-      .max(WORK_DONE_MAX, `Keep it under ${WORK_DONE_MAX} characters.`),
-    partsUsed: blankable(PARTS_USED_MAX, `Keep it under ${PARTS_USED_MAX} characters.`),
+      .max(WORK_DONE_MAX, `Keep it under ${WORK_DONE_MAX} characters.`)
+      .refine(noControlInText, CONTROL_MESSAGE),
+    partsUsed: blankable(PARTS_USED_MAX, `Keep it under ${PARTS_USED_MAX} characters.`, true),
     minutesSpent: optionalInt(1, 10_000, "the minutes"),
     faultIds: optionalFormArray(id).refine((v) => v === undefined || v.length <= MAX_LINKED_FAULTS, {
       message: `Link at most ${MAX_LINKED_FAULTS} faults.`,

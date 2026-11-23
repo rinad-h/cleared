@@ -8,6 +8,7 @@ import { parse, run, type ActionResult } from "@/lib/action";
 import type { Actor } from "@/server/domain/actor";
 
 const WRAPPED = Symbol.for("cleared.action");
+const SCHEMA = Symbol.for("cleared.action.schema");
 
 type Handler<In, Out> = (actor: Actor, input: In, now: number, db: Db) => Promise<Out>;
 
@@ -56,7 +57,13 @@ export function action<S extends z.ZodType, Out>(
     return result;
   };
   Object.defineProperty(wrapped, WRAPPED, { value: true });
+  Object.defineProperty(wrapped, SCHEMA, { value: schema });
   return wrapped as WrappedAction<Out>;
+}
+
+/** The Zod schema an `action()` parses its input with (undefined for anything else). */
+export function actionSchema(value: unknown): z.ZodType | undefined {
+  return isWrappedAction(value) ? ((value as unknown as Record<symbol, unknown>)[SCHEMA] as z.ZodType) : undefined;
 }
 
 /** True if `value` was created by `action()`. */

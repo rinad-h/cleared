@@ -7,9 +7,10 @@ import { FLAGS, useLocalFlag } from "./use-local-flag";
 type Item = { label: string; done: boolean; href: string; action: string };
 
 /**
- * Journey A setup checklist (temporary until Phase 6 builds the console home).
- * Rooms, certifications and machines come from the database; "labels printed"
- * and "join link shared" are remembered in this browser only.
+ * Journey A setup checklist, on the console home for admins until every step
+ * is done (Phase 6 §6). Rooms, certifications and machines come from the
+ * database; "labels printed" and "join link shared" are remembered in this
+ * browser only.
  */
 export function SetupChecklist({
   rooms,
@@ -36,13 +37,14 @@ export function SetupChecklist({
       : []),
   ];
   const remaining = items.filter((i) => !i.done).length;
+  if (remaining === 0) return null;
   return (
     <section aria-labelledby="setup-title" className="max-w-xl space-y-3 rounded-lg border p-5">
       <h2 id="setup-title" className="text-lg font-semibold">
         Set up your makerspace
       </h2>
       <p className="text-sm text-muted-foreground">
-        {remaining === 0 ? "All done. Members can scan a label to see their pass." : `${remaining} step${remaining === 1 ? "" : "s"} to go.`}
+        {`${remaining} step${remaining === 1 ? "" : "s"} to go.`}
       </p>
       <ol className="space-y-2">
         {items.map((item) => (

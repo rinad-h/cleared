@@ -2,7 +2,7 @@ import "server-only";
 import { and, desc, eq, inArray, lt, or, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
 import type { Db } from "@/db";
-import { faults, machines, members, serviceRecords } from "@/db/schema";
+import { checkups, faults, machines, members, serviceRecords } from "@/db/schema";
 import { HISTORY_PAGE_DEFAULT, LogServiceInput, ServiceHistoryInput } from "@/lib/schemas/faults";
 import { requireRole } from "@/server/authz";
 import { isUniqueViolation } from "@/server/db-errors";
@@ -48,7 +48,11 @@ export type ServiceRecordItem = {
 
 export type ServiceHistoryPage = { items: ServiceRecordItem[]; nextCursor: string | null };
 
-const invalid = (code: "INVALID_FAULT" | "INVALID_CORRECTION" | "INVALID_PERFORMER" | "CORRECTION_NO_EFFECTS", field: string, message: string) =>
+const invalid = (
+  code: "INVALID_FAULT" | "INVALID_CORRECTION" | "INVALID_PERFORMER" | "CORRECTION_NO_EFFECTS" | "INVALID_CHECKUP" | "CHECKUP_TYPE_MISMATCH",
+  field: string,
+  message: string,
+) =>
   new ServiceError(code, message, { [field]: [message] });
 
 /** The performer is an active staff member or admin (re-checked inside the write). */
@@ -66,6 +70,18 @@ function faultsOpenSql(machineId: string, ids: string[]): SQL {
   return sql`(SELECT COUNT(*) FROM "faults" WHERE "faults"."id" IN (${list}) AND "faults"."machine_id" = ${machineId}
     AND "faults"."status" = 'open') = ${ids.length}`;
 }
+
+/**
+ * The checkup is active and belongs to this machine (re-checked inside the
+ * write: `service_records.checkup_id` has no foreign key, Phase 6 D1).
+ */
+function checkupValidSql(machineId: string, checkupId: string): SQL {
+  return sql`EXISTS (SELECT 1 FROM "checkups" WHERE "checkups"."id" = ${checkupId}
+    AND "checkups"."machine_id" = ${machineId} AND "checkups"."active" = 1)`;
+}
+
+const invalidCheckup = () =>
+  invalid("INVALID_CHECKUP", "checkupId", "That checkup isn't active on this machine. Reload and try again.");
 
 /* -------------------------------------------------------------------- log */
 
@@ -107,12 +123,6 @@ export async function logServiceRecord(
   const previous = await replay();
   if (previous) return previous;
 
-  if (input.checkupId) {
-    throw new ServiceError("NOT_SUPPORTED_YET", "Linking a checkup comes in a later version.", {
-      checkupId: ["Linking a checkup isn't available yet."],
-    });
-  }
-
   const performedAt = input.performedAt ?? now;
   if (performedAt > now + FUTURE_TOLERANCE_MS) {
     throw new ServiceError("FUTURE_DATE", "The service date can't be in the future.", {
@@ -127,8 +137,15 @@ export async function logServiceRecord(
 
   const faultIds = [...new Set(input.faultIds ?? [])];
   const correction = input.correctsRecordId ?? null;
+  const checkupId = input.checkupId ?? null;
   if (correction && faultIds.length > 0) {
     throw invalid("CORRECTION_NO_EFFECTS", "faultIds", "A correction can't resolve faults. Log a new record instead.");
+  }
+  if (correction && checkupId) {
+    throw invalid("CORRECTION_NO_EFFECTS", "checkupId", "A correction can't count as a checkup. Log a new record instead.");
+  }
+  if (checkupId && input.type !== "scheduled_checkup") {
+    throw invalid("CHECKUP_TYPE_MISMATCH", "checkupId", "Only a scheduled checkup can be linked to a checkup.");
   }
 
   // Exactly one performer: an external technician, or a staff member (default: the actor).
@@ -175,6 +192,18 @@ export async function logServiceRecord(
   const faultProblem = await explainFaults();
   if (faultProblem) throw faultProblem;
 
+  const explainCheckup = async (): Promise<ServiceError | null> => {
+    if (!checkupId) return null;
+    const row = await db
+      .select({ machineId: checkups.machineId, active: checkups.active })
+      .from(checkups)
+      .where(eq(checkups.id, checkupId))
+      .get();
+    return row && row.machineId === input.machineId && row.active ? null : invalidCheckup();
+  };
+  const checkupProblem = await explainCheckup();
+  if (checkupProblem) throw checkupProblem;
+
   const id = crypto.randomUUID();
   const returns = input.outcome === "returned_to_service" && !correction;
   try {
@@ -190,13 +219,14 @@ export async function logServiceRecord(
             staffActiveSql(actor.memberId),
             performerId ? performerValidSql(performerId) : undefined,
             faultIds.length > 0 ? faultsOpenSql(machine.id, faultIds) : undefined,
+            checkupId ? checkupValidSql(machine.id, checkupId) : undefined,
           ),
           guarded: (guard) => [
             sql`INSERT INTO service_records (id, machine_id, performed_at, performed_by_member_id, external_technician,
                   logged_by_member_id, type, work_done, parts_used, minutes_spent, outcome, checkup_id, corrects_record_id,
                   client_request_id, created_at)
                 SELECT ${id}, ${machine.id}, ${performedAt}, ${performerId}, ${external}, ${actor.memberId}, ${input.type},
-                  ${input.workDone}, ${input.partsUsed ?? null}, ${input.minutesSpent ?? null}, ${input.outcome}, NULL,
+                  ${input.workDone}, ${input.partsUsed ?? null}, ${input.minutesSpent ?? null}, ${input.outcome}, ${checkupId},
                   ${correction}, ${input.clientRequestId}, ${now}
                 WHERE ${guard}`,
             ...(faultIds.length > 0
@@ -211,7 +241,7 @@ export async function logServiceRecord(
             ...(returns ? [returnToServiceSql(machine.id, now, guard)] : []),
           ],
           refused: async () => {
-            const problem = await explainFaults();
+            const problem = (await explainFaults()) ?? (await explainCheckup());
             if (problem) return problem;
             if (performerId && performerId !== actor.memberId) {
               return invalid("INVALID_PERFORMER", "performedByMemberId", "Choose an active staff member or admin.");

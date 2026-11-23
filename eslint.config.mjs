@@ -11,6 +11,14 @@ const eslintConfig = defineConfig([
         "warn",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_", caughtErrorsIgnorePattern: "^_" },
       ],
+      // User input is only ever rendered as React text (Phase 6 §4.5).
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "JSXAttribute[name.name='dangerouslySetInnerHTML']",
+          message: "Render text through React; dangerouslySetInnerHTML is banned.",
+        },
+      ],
     },
   },
   {

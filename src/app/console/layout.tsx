@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { Toaster } from "sonner";
 import { HeaderAccount } from "@/components/layouts/header-account";
 import { ConsoleDrawer, ConsoleSidebar } from "@/components/layouts/console-nav";
+import { getOverdueCheckupCount } from "@/data/checkups";
 import { getOpenFaultCount } from "@/data/faults";
 import { getMe } from "@/data/me";
 
@@ -10,14 +11,17 @@ async function isAdmin(): Promise<boolean> {
   return me.membership?.status === "active" && me.membership.role === "admin";
 }
 
+async function navProps() {
+  const [admin, faultCount, checkupCount] = await Promise.all([isAdmin(), getOpenFaultCount(), getOverdueCheckupCount()]);
+  return { isAdmin: admin, faultCount, checkupCount };
+}
+
 async function SidebarForRole() {
-  const [admin, faultCount] = await Promise.all([isAdmin(), getOpenFaultCount()]);
-  return <ConsoleSidebar isAdmin={admin} faultCount={faultCount} />;
+  return <ConsoleSidebar {...await navProps()} />;
 }
 
 async function DrawerForRole() {
-  const [admin, faultCount] = await Promise.all([isAdmin(), getOpenFaultCount()]);
-  return <ConsoleDrawer isAdmin={admin} faultCount={faultCount} />;
+  return <ConsoleDrawer {...await navProps()} />;
 }
 
 /**

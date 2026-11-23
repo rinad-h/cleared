@@ -16,6 +16,7 @@ import type { ActionResult } from "@/server/domain/errors";
 import { OUTCOME_LABELS, SERVICE_TYPE_LABELS } from "./labels";
 
 export type ServiceFormFault = { id: string; label: string; tookOutOfService: boolean };
+export type ServiceFormCheckup = { id: string; name: string; instructions: string | null; dueLabel: string };
 
 export type ServiceFormProps = {
   machineId: string;
@@ -29,6 +30,10 @@ export type ServiceFormProps = {
   faults: ServiceFormFault[];
   /** Pre-ticked from `?faultIds=`. */
   preselectedFaultIds: string[];
+  /** This machine's active checkups (none in correction mode). */
+  checkups: ServiceFormCheckup[];
+  /** From `?checkupId=` ("Log checkup"): starts as a scheduled checkup for it. */
+  preselectedCheckupId: string | null;
   /** Correction mode: the record being corrected, pre-filled. */
   correction: {
     id: string;
@@ -63,7 +68,8 @@ type Who = "me" | "staff" | "external";
  * double-tap logs one record.
  */
 export function ServiceForm(props: ServiceFormProps) {
-  const { machineId, timeZone, nowLocal, me, staff, faults, preselectedFaultIds, correction } = props;
+  const { machineId, timeZone, nowLocal, me, staff, faults, preselectedFaultIds, checkups, correction } = props;
+  const preselectedCheckup = checkups.find((c) => c.id === props.preselectedCheckupId) ?? null;
   const hydrated = useHydrated();
   const [state, dispatch, pending] = useActionState(
     async (_prev: ActionResult<unknown> | null, payload: Record<string, unknown>) => logServiceRecord(payload),
@@ -80,7 +86,9 @@ export function ServiceForm(props: ServiceFormProps) {
         : "me"
     : "me";
   const [who, setWho] = useState<Who>(initialWho);
-  const [type, setType] = useState<ServiceType>(correction?.type ?? "repair");
+  const [type, setType] = useState<ServiceType>(correction?.type ?? (preselectedCheckup ? "scheduled_checkup" : "repair"));
+  const [checkupId, setCheckupId] = useState<string>(preselectedCheckup?.id ?? "");
+  const linkedCheckup = type === "scheduled_checkup" ? (checkups.find((c) => c.id === checkupId) ?? null) : null;
   const [outcome, setOutcome] = useState<ServiceOutcome | null>(correction?.outcome ?? null);
   const [ticked, setTicked] = useState<Set<string>>(
     () => new Set(preselectedFaultIds.filter((id) => faults.some((f) => f.id === id))),
@@ -112,6 +120,7 @@ export function ServiceForm(props: ServiceFormProps) {
           partsUsed: String(form.get("partsUsed") ?? ""),
           minutesSpent: String(form.get("minutesSpent") ?? ""),
           faultIds: [...ticked],
+          checkupId: linkedCheckup?.id ?? "",
           outcome: outcome ?? "",
           correctsRecordId: correction?.id ?? "",
           clientRequestId: requestId.current,
@@ -211,6 +220,32 @@ export function ServiceForm(props: ServiceFormProps) {
           ))}
         </div>
       </fieldset>
+
+      {!correction && type === "scheduled_checkup" && checkups.length > 0 ? (
+        <div className="space-y-2">
+          <Label htmlFor="service-checkup">Which checkup?</Label>
+          <NativeSelect
+            id="service-checkup"
+            value={checkupId}
+            onChange={(e) => setCheckupId(e.target.value)}
+            aria-describedby="service-checkup-error"
+          >
+            <option value="">None (not a recurring checkup)</option>
+            {checkups.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name} ({c.dueLabel})
+              </option>
+            ))}
+          </NativeSelect>
+          {linkedCheckup?.instructions ? (
+            <div className="rounded-md border bg-muted/40 p-3 text-sm" role="note" aria-label="Checkup instructions">
+              <p className="font-medium">Instructions</p>
+              <p className="whitespace-pre-line break-words text-muted-foreground">{linkedCheckup.instructions}</p>
+            </div>
+          ) : null}
+          <FieldError id="service-checkup-error" errors={fieldErrors?.checkupId} />
+        </div>
+      ) : null}
 
       <div className="space-y-2">
         <Label htmlFor="service-work-done">What was done</Label>

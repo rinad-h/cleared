@@ -43,6 +43,13 @@
       "when": 1795458878243,
       "tag": "0005_faults_service",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1795461232375,
+      "tag": "0006_checkups",
+      "breakpoints": true
     }
   ]
 }

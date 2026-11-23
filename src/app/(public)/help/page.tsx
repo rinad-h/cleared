@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
-import { StatusBadge, STATUSES, type Status } from "@/components/status-badge";
+import { StatusBadge, type Status } from "@/components/status-badge";
 
 export const metadata: Metadata = { title: "Help" };
 
-const MEANINGS: Record<Status, string> = {
+/** The statuses members see (checkup states are staff-only). */
+const MEANINGS: Partial<Record<Status, string>> = {
   cleared: "You hold every certification this machine needs.",
   supervision: "You may use this machine only while a supervisor is present.",
   "not-cleared": "You're missing a certification for this machine.",
@@ -32,7 +33,7 @@ export default function HelpPage() {
       <div className="space-y-3">
         <h2 className="text-lg font-semibold">What the statuses mean</h2>
         <dl className="space-y-3">
-          {(Object.keys(STATUSES) as Status[]).map((status) => (
+          {(Object.keys(MEANINGS) as Status[]).map((status) => (
             <div key={status} className="space-y-1">
               <dt>
                 <StatusBadge status={status} />

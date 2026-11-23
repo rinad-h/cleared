@@ -9,6 +9,7 @@ import type { MachineStatus, OutOfServiceReason, SessionEndReason } from "@/serv
 import { ServiceError } from "@/server/domain/errors";
 import { parse } from "@/server/domain/parse";
 import { isActive } from "@/server/domain/sessions";
+import { readCheckups, type CheckupItem } from "@/server/services/checkups";
 import { readOpenFaults, type FaultItem } from "@/server/services/faults";
 import { readServiceHistory, type ServiceHistoryPage } from "@/server/services/service-records";
 import { SETTINGS_ID } from "@/server/version";
@@ -40,8 +41,8 @@ export type MachineDetail = {
     active: boolean;
   }[];
   serviceHistory: ServiceHistoryPage;
-  /** Phase 6. */
-  checkups: never[];
+  /** Every checkup on this machine, inactive ones too (by next due). */
+  checkups: CheckupItem[];
 };
 
 /**
@@ -104,9 +105,10 @@ export async function getMachineDetail(
   const m = machineRows[0];
   if (!m) throw new ServiceError("NOT_FOUND", "That machine doesn't exist.");
 
-  const [openFaults, serviceHistory] = await Promise.all([
+  const [openFaults, serviceHistory, checkupList] = await Promise.all([
     readOpenFaults(db, now, machineId),
     readServiceHistory(db, machineId, { cursor: rawInput.cursor }),
+    readCheckups(db, now, { machineId, includeInactive: true }),
   ]);
 
   const recentSessions = sessionRows.map((s) => {
@@ -147,7 +149,7 @@ export async function getMachineDetail(
       : null,
     recentSessions,
     serviceHistory,
-    checkups: [],
+    checkups: checkupList,
   };
 }
 
