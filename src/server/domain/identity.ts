@@ -30,6 +30,15 @@ export function hasControlChars(value: string): boolean {
   return false;
 }
 
+/** Like `hasControlChars`, but allows newline, carriage return and tab (long free text: descriptions, notes). */
+export function hasControlCharsInText(value: string): boolean {
+  for (const ch of value) {
+    if (ch === "\n" || ch === "\r" || ch === "\t") continue;
+    if (isControl(ch.codePointAt(0)!)) return true;
+  }
+  return false;
+}
+
 function replaceControlChars(value: string, replacement: string): string {
   let out = "";
   for (const ch of value) out += isControl(ch.codePointAt(0)!) ? replacement : ch;
