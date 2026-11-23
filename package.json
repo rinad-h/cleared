@@ -66,6 +66,9 @@
     "wrangler": "4.166.0"
   },
   "overrides": {
-    "vitest": "4.1.12"
+    "vitest": "4.1.12",
+    "@opennextjs/aws": {
+      "cookie": "0.7.2"
+    }
   }
 }
