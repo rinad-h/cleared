@@ -5,7 +5,18 @@ import { ADMIN_STATE } from "./accounts";
 
 // Signed-in pages (viewed as the admin that auth.spec.ts created).
 const MEMBER_PAGES = ["/machines", "/me/certifications", "/me/account", "/m/example-token"];
-const CONSOLE_PAGES = ["/console", "/console/faults", "/console/members", "/console/settings"];
+const CONSOLE_PAGES = [
+  "/console",
+  "/console/faults",
+  "/console/members",
+  "/console/settings",
+  "/console/rooms",
+  "/console/certifications",
+  "/console/machines",
+  "/console/machines/new",
+  "/console/labels",
+  "/console/door-poster",
+];
 // Pages anyone can open.
 const PUBLIC_PAGES = ["/help", "/sign-in", "/sign-up"];
 // Signed-in areas: proxy.ts sends signed-out visitors to sign-in.

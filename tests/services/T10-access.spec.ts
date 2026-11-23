@@ -1,15 +1,25 @@
-// PRD T10 (Phase 1 part): FR-01–FR-03 and Section 9, at the service layer.
-// Phase 2 adds the catalog parts (rooms, machines, certifications).
+// PRD T10: FR-01–FR-05 and Section 9, at the service layer.
+// Phase 1: identity and access. Phase 2: the catalog (rooms, machines, certifications, labels).
 import { beforeEach, describe, expect, it } from "vitest";
+import { createCertification, listCertifications, updateCertification } from "@/server/services/certifications";
+import { getDoorPoster, getLabelSheet } from "@/server/services/labels";
+import { createMachine, getMachine, getMachineByToken, listMachines, updateMachine } from "@/server/services/machines";
+import { createRoom, listRooms, moveRoom, updateRoom } from "@/server/services/rooms";
+import { getSetupProgress } from "@/server/services/setup-progress";
+import type { Actor } from "@/server/domain/actor";
 import { joinMakerspace } from "@/server/services/join";
 import { getMember, searchMembers, updateMember } from "@/server/services/members";
 import { getSettings, regenerateJoinLink, updateSettings } from "@/server/services/settings";
 import { completeSetup } from "@/server/services/setup";
 import { actors, createMakerspace, resetIdentity } from "../helpers/actors";
 import { testDb } from "../helpers/db";
+import { resetCatalog, seed } from "../helpers/seed";
 import { T0 } from "../helpers/time";
 
-beforeEach(() => resetIdentity());
+beforeEach(async () => {
+  await resetCatalog();
+  await resetIdentity();
+});
 
 const db = () => testDb();
 
@@ -91,5 +101,88 @@ describe("T10 — access control (Phase 1)", () => {
     await expect(
       completeSetup(db(), await actors.nonMember(), { makerspaceName: "Second", timezone: "UTC" }, T0),
     ).rejects.toMatchObject({ code: "SETUP_ALREADY_DONE" });
+  });
+});
+
+const SITE = { publicBaseUrl: "https://cleared.example.test", environment: "production" };
+
+/**
+ * P2-50 permission sweep: every Phase 2 service, called by one role below its
+ * minimum. Adding a service means adding a row here.
+ */
+describe("T10 — access control (Phase 2 catalog)", () => {
+  async function fixtures() {
+    await createMakerspace();
+    const room = await seed.room();
+    const cert = await seed.cert();
+    const machine = await seed.machine({ room });
+    return { room, cert, machine };
+  }
+
+  type Call = [name: string, (actor: Actor) => Promise<unknown>];
+
+  function staffServices(f: Awaited<ReturnType<typeof fixtures>>): Call[] {
+    return [
+      ["listRooms", (a) => listRooms(db(), a)],
+      ["createRoom", (a) => createRoom(db(), a, { name: "Sweep room" }, T0)],
+      ["updateRoom", (a) => updateRoom(db(), a, { id: f.room.id, name: "Swept" }, T0)],
+      ["moveRoom", (a) => moveRoom(db(), a, { id: f.room.id, direction: "down" }, T0)],
+      ["listMachines", (a) => listMachines(db(), a)],
+      ["getMachine", (a) => getMachine(db(), a, { id: f.machine.id })],
+      ["createMachine", (a) => createMachine(db(), a, { name: "Sweep machine", roomId: f.room.id }, T0)],
+      ["updateMachine", (a) => updateMachine(db(), a, { id: f.machine.id, name: "Swept machine" }, T0)],
+      ["getLabelSheet", (a) => getLabelSheet(db(), a, {}, T0, SITE)],
+      ["getDoorPoster", (a) => getDoorPoster(db(), a, SITE)],
+      ["getSetupProgress", (a) => getSetupProgress(db(), a)],
+      ["listCertifications(includeInactive)", (a) => listCertifications(db(), a, { includeInactive: true })],
+    ];
+  }
+
+  function adminServices(f: Awaited<ReturnType<typeof fixtures>>): Call[] {
+    return [
+      ["createCertification", (a) => createCertification(db(), a, { name: "Sweep cert" }, T0)],
+      ["updateCertification", (a) => updateCertification(db(), a, { id: f.cert.id, name: "Swept cert" }, T0)],
+    ];
+  }
+
+  function adminFields(f: Awaited<ReturnType<typeof fixtures>>): Call[] {
+    return [
+      ["createMachine(supervised)", (a) => createMachine(db(), a, { name: "S", roomId: f.room.id, supervised: true }, T0)],
+      ["createMachine(requirementIds)", (a) => createMachine(db(), a, { name: "S", roomId: f.room.id, requirementIds: [f.cert.id] }, T0)],
+      ["updateMachine(supervised)", (a) => updateMachine(db(), a, { id: f.machine.id, supervised: true }, T0)],
+      ["updateMachine(requirementIds)", (a) => updateMachine(db(), a, { id: f.machine.id, requirementIds: [] }, T0)],
+      ["updateMachine(retire)", (a) => updateMachine(db(), a, { id: f.machine.id, retire: true }, T0)],
+    ];
+  }
+
+  it("members → FORBIDDEN on staff services", async () => {
+    const f = await fixtures();
+    const m = await actors.member();
+    for (const [name, call] of staffServices(f)) await expect(call(m), name).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("staff → FORBIDDEN on admin services and FORBIDDEN_FIELD on admin-only machine fields", async () => {
+    const f = await fixtures();
+    const s = await actors.staff();
+    for (const [name, call] of adminServices(f)) await expect(call(s), name).rejects.toMatchObject({ code: "FORBIDDEN" });
+    for (const [name, call] of adminFields(f)) await expect(call(s), name).rejects.toMatchObject({ code: "FORBIDDEN_FIELD" });
+  });
+
+  it("suspended members, non-members and anonymous are refused everywhere, including the QR lookup when signed out", async () => {
+    const f = await fixtures();
+    const cases = [
+      [await actors.member({ role: "admin", status: "suspended" }), "SUSPENDED"],
+      [await actors.nonMember(), "NOT_A_MEMBER"],
+      [actors.anonymous(), "UNAUTHENTICATED"],
+    ] as const;
+    for (const [actor, code] of cases) {
+      for (const [name, call] of [...staffServices(f), ...adminServices(f), ...adminFields(f)]) {
+        await expect(call(actor), `${name} as ${actor.kind}`).rejects.toMatchObject({ code });
+      }
+    }
+    await expect(getMachineByToken(db(), actors.anonymous(), { token: f.machine.qrToken })).rejects.toMatchObject({
+      code: "UNAUTHENTICATED",
+    });
+    await expect(listCertifications(db(), actors.anonymous())).rejects.toMatchObject({ code: "UNAUTHENTICATED" });
   });
 });

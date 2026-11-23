@@ -24,15 +24,15 @@ async function DrawerForRole() {
  */
 export default function ConsoleLayout({ children }: LayoutProps<"/console">) {
   return (
-    <div className="min-h-dvh md:grid md:grid-cols-[15rem_minmax(0,1fr)]">
-      <aside className="hidden border-r bg-sidebar md:block">
+    <div className="min-h-dvh md:grid md:grid-cols-[15rem_minmax(0,1fr)] print:block">
+      <aside className="hidden border-r bg-sidebar md:block print:hidden">
         <p className="px-6 pt-5 text-base font-semibold">Cleared · Staff</p>
         <Suspense fallback={<ConsoleSidebar />}>
           <SidebarForRole />
         </Suspense>
       </aside>
       <div className="flex min-w-0 flex-col">
-        <header className="flex h-14 items-center gap-2 border-b px-2 md:px-6">
+        <header className="flex h-14 items-center gap-2 border-b px-2 md:px-6 print:hidden">
           <div className="md:hidden">
             <Suspense fallback={<ConsoleDrawer />}>
               <DrawerForRole />
@@ -45,7 +45,7 @@ export default function ConsoleLayout({ children }: LayoutProps<"/console">) {
             </Suspense>
           </div>
         </header>
-        <main id="main" className="flex-1 px-4 py-6 md:px-8">
+        <main id="main" className="flex-1 px-4 py-6 md:px-8 print:p-0">
           {children}
         </main>
       </div>

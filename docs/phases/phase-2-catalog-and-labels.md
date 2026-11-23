@@ -297,11 +297,11 @@ Service tests run in Vitest with `@cloudflare/vitest-plugin` (real `workerd`, fr
 
 ## 8. Exit criteria
 
-- [ ] All Phase 2 service and E2E tests green; the permission sweep covers the new services.
+- [x] All Phase 2 service and E2E tests green; the permission sweep covers the new services (2026-11-23: `npm run check` and `npm run test:e2e` pass).
 - [ ] The deployment has migration `0002`; the demo makerspace is set up on it.
 - [ ] A label printed from **the deployment** opens the right machine on two different phones (T01 partial).
 - [ ] Journey A timing recorded (target ≤ 30 min).
-- [ ] Additive-only migration rule in force.
+- [x] Additive-only migration rule in force (`drizzle/README.md`).
 
 ---
 
@@ -315,9 +315,9 @@ Service tests run in Vitest with `@cloudflare/vitest-plugin` (real `workerd`, fr
 | D4 | Staff input with any admin-only field is rejected whole (no partial apply) | Decided: clearer than silently ignoring fields |
 | D5 | Unknown and retired tokens return the same `recognized:false` result | Decided |
 | D6 | Label and join URLs come from `PUBLIC_BASE_URL`, never the request's origin | Decided (`technologies.md` §4.6) |
-| Q1 | Room deletion: not in PRD. Proposed: not in MVP (rooms with retired machines can't be deleted anyway); allow renaming | Proposed |
+| Q1 | Room deletion: not in PRD. Not in the MVP (rooms with retired machines can't be deleted anyway); rooms can be renamed and reordered | Decided |
 | Q2 | Label stock: plain paper + clear tape for the demo; weatherproof vinyl labels for the pilot. Physical cost, outside the $0 software budget | Note |
-| Q3 | Should the door poster's join-link QR be printable by staff, or admins only? Proposed: admin only, since the join link is an admin setting (PRD 9) | Proposed |
+| Q3 | Should the door poster's join-link QR be printable by staff, or admins only? Admin only, since the join link is an admin setting (PRD 9): `getDoorPoster` returns `joinUrl` to admins only | Decided |
 
 ## 10. Risks
 
@@ -328,3 +328,23 @@ Service tests run in Vitest with `@cloudflare/vitest-plugin` (real `workerd`, fr
 | A future URL change means reprinting every label | Subdomain frozen in Phase 0; label count is small (≤ 60) |
 | Setup takes longer than 30 min | "Add another" flow, room pre-select, timed test P2-63 drives fixes |
 | The `/m/[token]` server render gets heavy as later phases add to it | Keep it to one data call; check `cpuTime` (P2-65) and again in Phases 3–5 |
+
+## 11. Implementation notes (decided while building)
+
+| Decision | Detail | Date |
+|---|---|---|
+| Case-insensitive names | drizzle-kit can't express a column-level `COLLATE NOCASE`, so `rooms` and `certifications` get a unique index on `name COLLATE NOCASE` instead (`rooms_name_unique`, `certifications_name_unique`), the same guarantee as the SQL in §3. `machines_name_live` is the partial version. SQLite reports these violations as `UNIQUE constraint failed: rooms.name`; `isUniqueViolation()` (`src/server/db-errors.ts`) maps them to `NAME_TAKEN` | 2026-11-23 |
+| Schemas live in `src/lib/schemas/catalog.ts` | Not `src/server/schemas/`: the client forms import them, and everything under `src/server/` (except `domain/`) is `server-only` (AGENTS.md rule 3). Same place as Phase 1's `identity.ts` | 2026-11-23 |
+| New error codes | `NAME_TAKEN`, `CERT_INACTIVE`, `CERT_IN_USE` (all 409). `ServiceError` gained an optional `details` (`{ machines: [{ id, name }] }` for `CERT_IN_USE`), carried into `ActionResult` and `toHttp()` | 2026-11-23 |
+| `withMachineWrite(db, machineId, now, build, opts?)` | `build(machine, attempt)` returns a plan: `set` (columns), `where` (extra conditions on the swap, re-checked atomically), `guarded(guard)` (statements guarded by the new token), `refused()` (explains a `where` refusal) and `result`. The `data_version` bump is guarded by the new token too, so a lost race doesn't bump it. When the swap changes 0 rows the helper re-reads the token: moved → retry (first try + 3 retries, 10–40 ms jittered backoff) → `CONFLICT_RETRY`; unchanged → `refused()`; row gone → `NOT_FOUND` | 2026-11-23 |
+| Creating a machine | One guarded `INSERT … SELECT … WHERE` (room exists AND every chosen certification is active), then requirement inserts guarded by the new machine's write token. So a certification deactivated at the same moment can't leave a machine with a missing requirement: the whole create is refused (`CERT_INACTIVE`). Updates put the same conditions in `withMachineWrite`'s `where` | 2026-11-23 |
+| Retire | Admin only, and on its own (combined with other changes → `VALIDATION_FAILED`). Sets `status='retired'`, `retired_at`, `status_changed_at` and clears the out-of-service columns. The confirm dialog asks for the machine's name (client side; the service doesn't need it) | 2026-11-23 |
+| Room order | Besides `updateRoom({ sortOrder })`, a `moveRoom({ id, direction })` operation renumbers every room 0…n-1 in one batch, so "move up/down" is atomic and positions stay distinct. New rooms go last (`MAX(sort_order) + 1` inside the insert) | 2026-11-23 |
+| Certification list for members | `listCertifications` needs an active member; `includeInactive` needs staff (`FORBIDDEN` for members) | 2026-11-23 |
+| Form encoding | Admin fields must be distinguishable from "not sent" (`FORBIDDEN_FIELD` for staff). The admin section sends a hidden `supervised=false` before the checkbox (`optionalBoolean()` takes the last value) and a hidden empty `requirementIds` (`optionalFormArray()` drops empties), so "none ticked" clears the set; the staff form sends neither key. Both helpers are in `src/lib/validation.ts` | 2026-11-23 |
+| QR drawing | `<QrSvg>` calls `QRCode.create()` from `qrcode` after hydration and draws one `<path>` (runs of dark modules merged), error correction M, 2-module quiet zone, black on white. Nothing is drawn during server rendering (an empty white square of the same size), so the Worker spends no CPU on codes; no SVG string is injected into the page | 2026-11-23 |
+| Label selection | The machine list is a plain `GET` form to `/console/labels` with one `ids` checkbox per machine (works before hydration). `LabelSheetInput` accepts repeated `ids` and the comma list `?ids=a,b,c` | 2026-11-23 |
+| Label layouts | Large: 2 × 4, QR 50 mm, QR beside the text (a 50 mm code plus five lines of text doesn't fit a 64 mm-tall cell stacked). Compact: 3 × 6, QR 32 mm. On screen the grid collapses to one column on phones | 2026-11-23 |
+| Setup checklist | Rooms, certifications (active) and machines (live) are counted by `getSetupProgress` (one read). "Labels printed" (Print on the label sheet) and "Join link shared" (Copy on Settings, or printing the poster with the join QR) are remembered in that browser's `localStorage` only: no schema change for a card Phase 6 replaces. Staff don't see the two admin-only items | 2026-11-23 |
+| `/m/[token]` | `<Gate area="member">` + one `getMachineByToken` read. Token-shaped check first (`[A-Za-z0-9_-]{1,64}`), so junk never reaches D1. The service itself only needs a signed-in user (§5) | 2026-11-23 |
+| Demo catalog | `npm run db:seed` loads the P7-70 catalog (4 rooms, 4 certifications, 10 machines, two supervised lathes) into the **local** D1, skipping names that exist. Demo members, grants and `--reset` stay in Phase 7 | 2026-11-23 |

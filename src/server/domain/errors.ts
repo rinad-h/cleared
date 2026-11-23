@@ -11,6 +11,9 @@ export const ERROR_CODES = [
   "NOT_A_MEMBER",
   "SUSPENDED",
   "NOT_FOUND",
+  "NAME_TAKEN",
+  "CERT_INACTIVE",
+  "CERT_IN_USE",
   "MACHINE_BUSY",
   "MACHINE_RETIRED",
   "MACHINE_OUT_OF_SERVICE",
@@ -30,21 +33,30 @@ export type ErrorCode = (typeof ERROR_CODES)[number];
 
 export type FieldErrors = Record<string, string[] | undefined>;
 
+/**
+ * Extra, safe-to-show facts about a refusal, e.g. `CERT_IN_USE` lists the
+ * machines that still require the certification. Never secrets or free text
+ * someone else typed that the actor couldn't already see.
+ */
+export type ErrorDetails = { machines?: { id: string; name: string }[] };
+
 export class ServiceError extends Error {
   readonly code: ErrorCode;
   readonly fieldErrors?: FieldErrors;
+  readonly details?: ErrorDetails;
 
-  constructor(code: ErrorCode, message: string, fieldErrors?: FieldErrors) {
+  constructor(code: ErrorCode, message: string, fieldErrors?: FieldErrors, details?: ErrorDetails) {
     super(message);
     this.name = "ServiceError";
     this.code = code;
     this.fieldErrors = fieldErrors;
+    this.details = details;
   }
 }
 
 export type ActionResult<T = void> =
   | { ok: true; data: T }
-  | { ok: false; error: string; code: ErrorCode; fieldErrors?: FieldErrors };
+  | { ok: false; error: string; code: ErrorCode; fieldErrors?: FieldErrors; details?: ErrorDetails };
 
 export const GENERIC_ERROR_MESSAGE = "Something went wrong. Try again.";
 export const DAILY_LIMIT_MESSAGE =
@@ -93,6 +105,7 @@ export function toActionError(err: unknown): Extract<ActionResult<never>, { ok: 
       error: err.message,
       code: err.code,
       ...(err.fieldErrors ? { fieldErrors: err.fieldErrors } : {}),
+      ...(err.details ? { details: err.details } : {}),
     };
   }
   if (isDailyLimitError(err)) {
@@ -109,6 +122,9 @@ const HTTP_STATUS: Record<ErrorCode, number> = {
   NOT_A_MEMBER: 403,
   SUSPENDED: 403,
   NOT_FOUND: 404,
+  NAME_TAKEN: 409,
+  CERT_INACTIVE: 409,
+  CERT_IN_USE: 409,
   MACHINE_BUSY: 409,
   MACHINE_RETIRED: 409,
   MACHINE_OUT_OF_SERVICE: 409,
@@ -130,9 +146,9 @@ export function httpStatusFor(code: ErrorCode): number {
 
 /** For route handlers: a JSON error response with the matching HTTP status. */
 export function toHttp(err: unknown): Response {
-  const { error, code, fieldErrors } = toActionError(err);
+  const { error, code, fieldErrors, details } = toActionError(err);
   return Response.json(
-    { error, code, ...(fieldErrors ? { fieldErrors } : {}) },
+    { error, code, ...(fieldErrors ? { fieldErrors } : {}), ...(details ? { details } : {}) },
     { status: httpStatusFor(code), headers: { "Cache-Control": "no-store" } },
   );
 }

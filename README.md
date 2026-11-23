@@ -4,7 +4,9 @@ Cleared puts machine-access answers where they're needed in an education makersp
 
 It's one Next.js 16 app deployed to **Cloudflare Workers Free** with **D1** and **Better Auth** (email + password), designed to run for **$0**: no paid plans, no domain, no credit card.
 
-> **Status:** early development. The Phase 0 code foundation is in place; its deploy and platform checks (first deploys, CPU spikes) are still to do. Features arrive phase by phase (see [`docs/phases/`](docs/phases/README.md)).
+Cleared is a project for **ENTI 333, Fall 2026**.
+
+> **Status:** early development. Built so far: the foundation (Phase 0), sign-in, setup, join links and roles (Phase 1), and the catalog: rooms, certifications, machines and printable QR labels (Phase 2). Features arrive phase by phase (see [`docs/phases/`](docs/phases/README.md)).
 
 ## Quick start (local)
 

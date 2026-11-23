@@ -5,6 +5,7 @@ import { Check, Copy, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { regenerateJoinLink, updateSettings } from "@/actions/settings";
 import { useHydrated } from "@/components/auth/use-hydrated";
+import { FLAGS, setLocalFlag } from "@/components/catalog/use-local-flag";
 import { FieldError, FormMessage } from "@/components/forms/messages";
 import { TimeZoneField } from "@/components/forms/time-zone-field";
 import { Button } from "@/components/ui/button";
@@ -73,6 +74,7 @@ export function JoinLinkCard({ joinUrl }: { joinUrl: string }) {
           onClick={async () => {
             try {
               await navigator.clipboard.writeText(joinUrl);
+              setLocalFlag(FLAGS.joinLinkShared);
               setCopied(true);
               setTimeout(() => setCopied(false), 2000);
             } catch {

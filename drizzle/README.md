@@ -11,6 +11,8 @@ npm run db:migrate:remote           # 4. the deployment's D1, right before `npm 
 
 Wrangler records applied files in the `d1_migrations` table and applies only new ones. It reads the `.sql` files; `meta/` is drizzle-kit's own state and must be committed too.
 
+**From `0002_catalog.sql` on, migrations are additive only** (Phase 2, P2-31): the deployment holds the demo makerspace, so the first rule below is in force for every new file.
+
 ## Review checklist (every new migration)
 
 Migrations run **before** the code that needs them is deployed, so the code that is still live must keep working against the new schema.
