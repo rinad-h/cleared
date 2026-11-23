@@ -15,7 +15,14 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Phase 1 sets the protected routes (member app and console) once sign-in exists.
-  // Until then this matches nothing, so every placeholder page stays reachable.
-  matcher: ["/__proxy-disabled-until-phase-1"],
+  // Signed-in areas. `/help`, `/sign-in`, `/sign-up` and the API stay public
+  // (the API routes check the session themselves and answer 401).
+  matcher: [
+    "/machines/:path*",
+    "/m/:path*",
+    "/me/:path*",
+    "/console/:path*",
+    "/setup",
+    "/join/:path*",
+  ],
 };
