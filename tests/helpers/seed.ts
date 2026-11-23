@@ -4,11 +4,13 @@
  *   const cert = await seed.cert({ validityMonths: 12 });
  *   const laser = await seed.machine({ room, requires: [cert], supervised: true });
  *   await seed.grant(member, cert, { by: staff, expiresAt: T0 + DAY })
- * Later phases add sessions, faults, …
+ *   await seed.session(member, laser, { startedAt: T0, minutes: 60 })
+ * Later phases add faults, …
  */
 import { sql } from "drizzle-orm";
 import type { Db } from "@/db";
-import { certifications, grants, machineRequirements, machines, rooms } from "@/db/schema";
+import { certifications, grants, machineRequirements, machineSessions, machines, rooms } from "@/db/schema";
+import type { SessionEndReason } from "@/server/domain/enums";
 import type { MemberActor } from "@/server/domain/actor";
 import { newToken } from "@/server/domain/identity";
 import { testDb } from "./db";
@@ -144,11 +146,39 @@ async function grant(
   return row;
 }
 
-export const seed = { room, cert, machine, grant };
+/** A session written straight to the table (open unless `endedAt` is given). */
+async function session(
+  member: Pick<MemberActor, "memberId">,
+  onMachine: { id: string },
+  {
+    startedAt = T0,
+    minutes = 60,
+    endedAt = null,
+    endReason = null,
+    db = testDb(),
+  }: { startedAt?: number; minutes?: number; endedAt?: number | null; endReason?: SessionEndReason | null; db?: Db } = {},
+) {
+  const row = {
+    id: crypto.randomUUID(),
+    machineId: onMachine.id,
+    memberId: member.memberId,
+    startedAt,
+    expectedEndAt: startedAt + minutes * 60_000,
+    endedAt,
+    endReason: endedAt === null ? null : (endReason ?? "user"),
+    clientRequestId: crypto.randomUUID(),
+    createdAt: startedAt,
+  };
+  await db.insert(machineSessions).values(row);
+  return row;
+}
+
+export const seed = { room, cert, machine, grant, session };
 
 /** Empty the catalog tables (test files share one D1, so specs reset between tests). */
 export async function resetCatalog(db: Db = testDb()) {
   await db.batch([
+    db.run(sql`DELETE FROM machine_sessions`),
     db.run(sql`DELETE FROM grants`),
     db.run(sql`DELETE FROM machine_requirements`),
     db.run(sql`DELETE FROM machines`),

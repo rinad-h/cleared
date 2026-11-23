@@ -1,6 +1,6 @@
 // PRD T10: FR-01–FR-05 and Section 9, at the service layer.
 // Phase 1: identity and access. Phase 2: the catalog (rooms, machines, certifications, labels).
-// Phase 3: sign-off, revoke and certification records.
+// Phase 3: sign-off, revoke and certification records. Phase 4: sessions and the status board.
 import { beforeEach, describe, expect, it } from "vitest";
 import { createCertification, listCertifications, updateCertification } from "@/server/services/certifications";
 import { getDoorPoster, getLabelSheet } from "@/server/services/labels";
@@ -14,6 +14,8 @@ import { joinMakerspace } from "@/server/services/join";
 import { getMember, searchMembers, updateMember } from "@/server/services/members";
 import { getSettings, regenerateJoinLink, updateSettings } from "@/server/services/settings";
 import { completeSetup } from "@/server/services/setup";
+import { getStatusBoard } from "@/server/services/board";
+import { endSession, extendSession, getMemberSessions, getMyRecentSessions, startSession } from "@/server/services/sessions";
 import { actors, createMakerspace, resetIdentity } from "../helpers/actors";
 import { testDb } from "../helpers/db";
 import { resetCatalog, seed } from "../helpers/seed";
@@ -225,6 +227,48 @@ describe("T10 — access control (Phase 3 certifications)", () => {
     for (const [actor, code] of cases) {
       const calls: Call[] = [...staffServices(f), ["getMyCertifications", (a) => getMyCertifications(db(), a, T0)]];
       for (const [name, call] of calls) {
+        await expect(call(actor), `${name} as ${actor.kind}`).rejects.toMatchObject({ code });
+      }
+    }
+  });
+});
+
+describe("T10 — access control (Phase 4 sessions and board)", () => {
+  async function fixtures() {
+    await createMakerspace();
+    const machine = await seed.machine();
+    const owner = await actors.member();
+    const session = await seed.session(owner, machine, { startedAt: T0 - 60_000 });
+    return { machine, owner, session };
+  }
+
+  type Call = [name: string, (actor: Actor) => Promise<unknown>];
+  const memberServices = (f: Awaited<ReturnType<typeof fixtures>>): Call[] => [
+    ["startSession", (a) => startSession(db(), a, { machineId: f.machine.id, clientRequestId: crypto.randomUUID() }, T0)],
+    ["extendSession", (a) => extendSession(db(), a, { sessionId: f.session.id, minutes: 15 }, T0)],
+    ["endSession", (a) => endSession(db(), a, { sessionId: f.session.id }, T0)],
+    ["getStatusBoard", (a) => getStatusBoard(db(), a, T0)],
+    ["getMyRecentSessions", (a) => getMyRecentSessions(db(), a, T0)],
+    ["getMemberSessions", (a) => getMemberSessions(db(), a, { memberId: f.owner.memberId }, T0)],
+  ];
+
+  it("members can't end or extend someone else's session or read another member's sessions", async () => {
+    const f = await fixtures();
+    const m = await actors.member();
+    await expect(endSession(db(), m, { sessionId: f.session.id }, T0)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(extendSession(db(), m, { sessionId: f.session.id, minutes: 15 }, T0)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(getMemberSessions(db(), m, { memberId: f.owner.memberId }, T0)).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("suspended members, non-members and anonymous are refused everywhere", async () => {
+    const f = await fixtures();
+    const cases = [
+      [await actors.member({ role: "admin", status: "suspended" }), "SUSPENDED"],
+      [await actors.nonMember(), "NOT_A_MEMBER"],
+      [actors.anonymous(), "UNAUTHENTICATED"],
+    ] as const;
+    for (const [actor, code] of cases) {
+      for (const [name, call] of memberServices(f)) {
         await expect(call(actor), `${name} as ${actor.kind}`).rejects.toMatchObject({ code });
       }
     }
