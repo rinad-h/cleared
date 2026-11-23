@@ -79,8 +79,8 @@ describe("toActionError", () => {
   it.each([
     "too many SQL variables",
     "Too many API requests by single worker invocation",
-    "Brevo: you have exceeded your daily sending limit",
-    "EMAIL_DAILY_CAP exceeded: daily quota reached",
+    "Upstream API: you have exceeded your daily request limit",
+    "QUOTA exceeded: daily quota reached",
     "Worker exceeded CPU time limit",
   ])("doesn't treat other limits as the D1 daily limit: %s", (message) => {
     expect(isDailyLimitError(new Error(message))).toBe(false);
@@ -229,7 +229,10 @@ describe("HTTP mapping", () => {
     MACHINE_OUT_OF_SERVICE: 409,
     OPEN_OOS_FAULT: 409,
     SETUP_ALREADY_DONE: 409,
+    SETUP_NOT_DONE: 409,
+    INVALID_JOIN_LINK: 404,
     LAST_ADMIN: 409,
+    CANNOT_SUSPEND_SELF: 403,
     CONFLICT_RETRY: 409,
     RATE_LIMITED: 429,
     DAILY_LIMIT: 503,

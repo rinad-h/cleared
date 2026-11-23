@@ -1,27 +1,16 @@
 #!/usr/bin/env bash
-# Build, check and deploy ONE environment, then smoke-test it.
+# Build, check and deploy the app (there is one deployment), then smoke-test it.
 #
-#   npm run deploy:staging          scripts/deploy.sh staging
-#   npm run deploy                  scripts/deploy.sh production
-#   npm run deploy:first:staging    scripts/deploy.sh staging --first
-#   npm run deploy:first            scripts/deploy.sh production --first
+#   npm run deploy          scripts/deploy.sh
+#   npm run deploy:first    scripts/deploy.sh --first
 #
-# The environment comes from the script name only; extra arguments are rejected,
-# so `npm run deploy -- --env staging` can't silently deploy production.
+# Extra arguments are rejected, so a mistyped flag can't change what deploys.
 #
-# --first also uploads the Worker secrets: it generates BETTER_AUTH_SECRET and
-# asks for the Brevo API key and sender address (hidden prompt, so nothing lands
-# in shell history). It refuses to run if the environment already has secrets,
-# because replacing BETTER_AUTH_SECRET signs everyone out.
+# --first also generates and uploads the Worker's one secret, BETTER_AUTH_SECRET.
+# It refuses to run if the Worker already has it, because replacing it signs
+# everyone out.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-
-usage="usage: scripts/deploy.sh <staging|production> [--first]"
-target="${1:-}"
-case "$target" in
-  staging|production) shift ;;
-  *) echo "$usage" >&2; exit 2 ;;
-esac
 
 first=false
 for arg in "$@"; do
@@ -29,71 +18,53 @@ for arg in "$@"; do
     first=true
   else
     echo "deploy: unexpected argument '$arg'." >&2
-    echo "  Pick the environment with the script name: npm run deploy:staging / npm run deploy" >&2
-    echo "  (first deploys: npm run deploy:first:staging / npm run deploy:first)." >&2
+    echo "  usage: npm run deploy (or npm run deploy:first for the very first deploy)" >&2
     exit 2
   fi
 done
 
 config=(--config wrangler.deploy.jsonc)
-if [[ "$target" == "staging" ]]; then config+=(--env staging); fi
-script_suffix=""
-if [[ "$target" == "staging" ]]; then script_suffix=":staging"; fi
 
-echo "==> Deploying to ${target}"
+echo "==> Deploying"
 node scripts/render-wrangler.mjs
 
 better_auth_secret=""
 if $first; then
   command -v openssl >/dev/null || { echo "deploy: openssl is required" >&2; exit 1; }
 
-  # Refuse to replace existing secrets. `secret list` fails when the Worker
+  # Refuse to replace the existing secret. `secret list` fails when the Worker
   # doesn't exist yet, which is exactly the first-deploy case.
   if existing="$(npx wrangler secret list --format json "${config[@]}" 2>/dev/null)" \
     && grep -q 'BETTER_AUTH_SECRET' <<<"$existing"; then
-    echo "deploy: ${target} already has its secrets; a first deploy would replace BETTER_AUTH_SECRET and sign everyone out." >&2
-    echo "  Deploy code with: npm run deploy${script_suffix}" >&2
-    echo "  Change one secret with: npm run remote -- secret put <NAME>$([[ $target == staging ]] && echo ' --env staging')" >&2
+    echo "deploy: the Worker already has BETTER_AUTH_SECRET; a first deploy would replace it and sign everyone out." >&2
+    echo "  Deploy code with: npm run deploy" >&2
     exit 1
   fi
 
-  if [[ -z "${BREVO_API_KEY:-}" ]]; then
-    read -rsp "Brevo API key (input hidden): " BREVO_API_KEY
-    echo
-  fi
-  if [[ -z "${EMAIL_FROM_ADDRESS:-}" ]]; then
-    read -rp "Sender address verified in Brevo: " EMAIL_FROM_ADDRESS
-  fi
-  if [[ -z "${BREVO_API_KEY:-}" || -z "${EMAIL_FROM_ADDRESS:-}" ]]; then
-    echo "deploy: the Brevo API key and sender address are required for a first deploy" >&2
-    exit 1
-  fi
   better_auth_secret="$(openssl rand -base64 32)"
   if [[ -z "$better_auth_secret" ]]; then echo "deploy: openssl rand failed" >&2; exit 1; fi
 fi
 
 echo "==> Building"
-# Secrets never need to be in the build's environment.
-env -u BREVO_API_KEY -u EMAIL_FROM_ADDRESS -u BETTER_AUTH_SECRET \
+# The secret never needs to be in the build's environment.
+env -u BETTER_AUTH_SECRET \
   npx opennextjs-cloudflare build "${config[@]}"
 
 echo "==> Checking the build"
 if $first; then
-  # Also look for literal copies of the secrets about to be uploaded.
-  BETTER_AUTH_SECRET="$better_auth_secret" BREVO_API_KEY="$BREVO_API_KEY" node scripts/check-bundle.mjs
+  # Also look for a literal copy of the secret about to be uploaded.
+  BETTER_AUTH_SECRET="$better_auth_secret" node scripts/check-bundle.mjs
 else
   node scripts/check-bundle.mjs
 fi
 
-echo "==> Deploying"
+echo "==> Uploading"
 if $first; then
   secrets_file="$(mktemp)"
   chmod 600 "$secrets_file"
   trap 'rm -f "$secrets_file"' EXIT
   {
     printf 'BETTER_AUTH_SECRET=%s\n' "$better_auth_secret"
-    printf 'BREVO_API_KEY=%s\n' "$BREVO_API_KEY"
-    printf 'EMAIL_FROM_ADDRESS=%s\n' "$EMAIL_FROM_ADDRESS"
   } > "$secrets_file"
   npx opennextjs-cloudflare deploy "${config[@]}" --secrets-file "$secrets_file"
 else
@@ -101,4 +72,4 @@ else
 fi
 
 echo "==> Smoke test"
-bash scripts/smoke-test.sh "$target"
+bash scripts/smoke-test.sh

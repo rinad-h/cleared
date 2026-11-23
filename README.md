@@ -33,45 +33,44 @@ Everything runs on free plans with no credit card. The full walkthrough, with ev
 
 | What | Where |
 |---|---|
-| Your `workers.dev` subdomain and D1 database IDs (not secret, but yours) | `cleared.config.json`, git-ignored (copy of `cleared.config.example.json`) |
-| Secrets: `BETTER_AUTH_SECRET`, `BREVO_API_KEY`, `EMAIL_FROM_ADDRESS` | Cloudflare Worker secrets (deployed), `.dev.vars` (local, git-ignored) |
+| Your `workers.dev` subdomain and D1 database ID (not secret, but yours) | `cleared.config.json`, git-ignored (copy of `cleared.config.example.json`) |
+| Secret: `BETTER_AUTH_SECRET` | Cloudflare Worker secrets (deployed), `.dev.vars` (local, git-ignored) |
 | Cloudflare login | `npx wrangler login` (stored by Wrangler outside the repo) |
 
 `wrangler.jsonc` keeps `<placeholders>`; deploy scripts render your values into a git-ignored `wrangler.deploy.jsonc`. Don't create `.env` files: OpenNext can embed them into the deployed bundle.
 
-**Steps** (section numbers refer to the guide):
+**Steps** (each links to the full instructions in the guide):
 
-1. **Accounts** (§2–3, §9): a free Cloudflare account (choose your `workers.dev` subdomain once; QR labels encode it) and a free Brevo account with a verified sender and an API key.
-2. **Connect and create databases** (§5–6):
+1. **Create a free [Cloudflare account](docs/setup-and-deploy.md#3-create-your-cloudflare-account-and-workersdev-subdomain)** and pick your `workers.dev` subdomain (it's printed on QR labels).
+2. **[Create the database](docs/setup-and-deploy.md#6-create-the-d1-database).** If Wrangler offers to update your config, answer **no**.
    ```bash
    npx wrangler login
-   npx wrangler d1 create cleared-staging --location=wnam
-   npx wrangler d1 create cleared-prod    --location=wnam
+   npx wrangler d1 create cleared --location=wnam
    ```
-3. **Your deployment values** (§7):
+3. **[Add your values](docs/setup-and-deploy.md#7-add-your-deployment-values-clearedconfigjson).**
    ```bash
-   cp cleared.config.example.json cleared.config.json   # fill in subdomain + both database IDs
-   npm run config:render                                # checks them and writes wrangler.deploy.jsonc
+   cp cleared.config.example.json cleared.config.json
    ```
-4. **First deploy to staging, then production** (§10–11). `deploy:first` asks for the Brevo key (hidden, so it stays out of your shell history), generates `BETTER_AUTH_SECRET`, uploads the secrets with the code and smoke-tests the result. It refuses to run twice for the same environment:
-   ```bash
-   npm run db:migrate:staging
-   npm run deploy:first:staging
+   In `cleared.config.json`, set:
+   - `workersSubdomain`: your subdomain, e.g. `my-makerspace` (dashboard → **Workers & Pages** → **Account details**)
+   - `d1DatabaseId`: the `database_id` printed in step 2
 
+   Then check it with `npm run config:render`.
+4. **[Deploy](docs/setup-and-deploy.md#9-first-deploy).** This also creates the Worker and its secret.
+   ```bash
    npm run db:migrate:remote
    npm run deploy:first
    ```
-5. **In the app** (§12): sign up with the admin account, verify the email, and complete **Setup**.
+5. **[Set up the app](docs/setup-and-deploy.md#11-first-run-setup-in-the-app):** open `https://cleared.<your-subdomain>.workers.dev`, sign up and complete **Setup**.
 
-**Everyday deploys** (§13–14). There's no CI server: you deploy from your machine, after the checks pass. The environment comes from the script name (extra arguments are rejected), and each deploy re-scans its build for secrets and ends with a smoke test that `/api/health` reports the version you just built.
+**[Everyday deploys](docs/setup-and-deploy.md#12-everyday-deploys):**
 
 ```bash
-npm run check                                           # must pass first
-npm run db:migrate:staging && npm run deploy:staging    # try it on staging
-npm run db:migrate:remote  && npm run deploy            # then production
+npm run check                                   # must pass first
+npm run db:migrate:remote && npm run deploy
 ```
 
-For ad-hoc commands against your remote databases, use `npm run remote -- <wrangler args>` (for example `npm run remote -- d1 migrations list DB --remote`). Operating a deployment (logs, rollback, backups, restore) is in [`docs/runbook.md`](docs/runbook.md). **Database backups contain personal data: always write them outside this folder** (the repository is public).
+Logs, rollback and backups: [`docs/runbook.md`](docs/runbook.md). **Database backups contain personal data: always save them outside this folder** (the repository is public).
 
 ## Documentation
 

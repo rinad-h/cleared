@@ -1,51 +1,29 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  // Generic template: keep the <placeholders>. Your subdomain and D1 ids go in
+  // Generic template: keep the <placeholders>. Your subdomain and D1 id go in
   // cleared.config.json (git-ignored); deploy scripts render them into
   // wrangler.deploy.jsonc (docs/setup-and-deploy.md §7). `npm run check` fails
   // if this file ever holds real values. No secrets here either: those are Worker secrets.
+  // One deployment only: there is no staging environment.
   "name": "cleared",
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-11-20",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
-  "secrets": { "required": ["BETTER_AUTH_SECRET", "BREVO_API_KEY", "EMAIL_FROM_ADDRESS"] },
+  "secrets": { "required": ["BETTER_AUTH_SECRET"] },
   "workers_dev": true,
   "preview_urls": false,
   "observability": { "enabled": true },
   "vars": {
     "ENVIRONMENT": "production",
     "PUBLIC_BASE_URL": "https://cleared.<your-subdomain>.workers.dev",
-    "BETTER_AUTH_URL": "https://cleared.<your-subdomain>.workers.dev",
-    "REQUIRE_EMAIL_VERIFICATION": "true",
-    "EMAIL_FROM_NAME": "Cleared",
-    "EMAIL_DAILY_CAP": "280"
+    "BETTER_AUTH_URL": "https://cleared.<your-subdomain>.workers.dev"
   },
   "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
   "services": [{ "binding": "WORKER_SELF_REFERENCE", "service": "cleared" }],
   "d1_databases": [
-    { "binding": "DB", "database_name": "cleared-prod", "database_id": "<prod-database-id>", "migrations_dir": "drizzle" }
+    { "binding": "DB", "database_name": "cleared", "database_id": "<database-id>", "migrations_dir": "drizzle" }
   ],
   "ratelimits": [
     { "name": "RL_ACTIONS", "namespace_id": "1001", "simple": { "limit": 20, "period": 60 } }
-  ],
-  "env": {
-    "staging": {
-      "name": "cleared-staging",
-      "vars": {
-        "ENVIRONMENT": "staging",
-        "PUBLIC_BASE_URL": "https://cleared-staging.<your-subdomain>.workers.dev",
-        "BETTER_AUTH_URL": "https://cleared-staging.<your-subdomain>.workers.dev",
-        "REQUIRE_EMAIL_VERIFICATION": "true",
-        "EMAIL_FROM_NAME": "Cleared (staging)",
-        "EMAIL_DAILY_CAP": "50"
-      },
-      "services": [{ "binding": "WORKER_SELF_REFERENCE", "service": "cleared-staging" }],
-      "d1_databases": [
-        { "binding": "DB", "database_name": "cleared-staging", "database_id": "<staging-database-id>", "migrations_dir": "drizzle" }
-      ],
-      "ratelimits": [
-        { "name": "RL_ACTIONS", "namespace_id": "2001", "simple": { "limit": 20, "period": 60 } }
-      ]
-    }
-  }
+  ]
 }

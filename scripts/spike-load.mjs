@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // TEMPORARY (Phase 0 spikes S1/S2). Calls a URL N times in sequence and prints
 // wall-clock timings. CPU time isn't visible from the client: read `cpuTime`
-// in Workers Logs (dashboard) or `npx wrangler tail cleared-staging --format json`.
+// in Workers Logs (dashboard) or `npm run remote -- tail cleared --format json`.
 //
-//   node scripts/spike-load.mjs https://cleared-staging.<sub>.workers.dev/spike/board 50
+//   node scripts/spike-load.mjs https://cleared.<sub>.workers.dev/spike/board 50
 
 const [url, countArg = "50"] = process.argv.slice(2);
 if (!url) {

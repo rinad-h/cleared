@@ -16,7 +16,10 @@ export const ERROR_CODES = [
   "MACHINE_OUT_OF_SERVICE",
   "OPEN_OOS_FAULT",
   "SETUP_ALREADY_DONE",
+  "SETUP_NOT_DONE",
+  "INVALID_JOIN_LINK",
   "LAST_ADMIN",
+  "CANNOT_SUSPEND_SELF",
   "CONFLICT_RETRY",
   "RATE_LIMITED",
   "DAILY_LIMIT",
@@ -52,7 +55,7 @@ export const DAILY_LIMIT_MESSAGE =
  * (e.g. "D1_ERROR: Your account has exceeded D1's free tier daily row read
  * limit"), so it is matched by text. The match must name D1's row read/write
  * limit, or D1 together with a daily limit/quota: other "daily limit" messages
- * (an email provider's sending cap) are different problems.
+ * (another service's quota) are different problems.
  */
 function isD1DailyLimitMessage(message: string): boolean {
   if (/daily[\s_-]*(row[\s_-]*)?(read|write)[\s_-]*limit/i.test(message)) return true;
@@ -111,7 +114,10 @@ const HTTP_STATUS: Record<ErrorCode, number> = {
   MACHINE_OUT_OF_SERVICE: 409,
   OPEN_OOS_FAULT: 409,
   SETUP_ALREADY_DONE: 409,
+  SETUP_NOT_DONE: 409,
+  INVALID_JOIN_LINK: 404,
   LAST_ADMIN: 409,
+  CANNOT_SUSPEND_SELF: 403,
   CONFLICT_RETRY: 409,
   RATE_LIMITED: 429,
   DAILY_LIMIT: 503,

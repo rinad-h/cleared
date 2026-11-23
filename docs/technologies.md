@@ -25,7 +25,7 @@
 4. [Cloudflare platform](#4-cloudflare-platform)
 5. [Next.js on Workers (OpenNext)](#5-nextjs-on-workers-opennext)
 6. [Authentication: how Better Auth works and its limits](#6-authentication-how-better-auth-works-and-its-limits)
-7. [Email](#7-email)
+7. [Email: none](#7-email-none)
 8. [Frontend](#8-frontend)
 9. [Server code structure](#9-server-code-structure)
 10. [Testing](#10-testing)
@@ -63,13 +63,12 @@ Cleared is **one Next.js application** compiled by **OpenNext** into **one Cloud
  │    ├─ Pages (RSC)         /machines, /m/[token], /console/* … → src/data/*   │
  │    ├─ Server actions      src/actions/* → src/server/services/* (checks)     │
  │    ├─ Route handlers      /api/status-board, /api/console (ETag/304)         │
- │    ├─ Better Auth         /api/auth/* (sign-up, sign-in, reset, sessions)    │
- │    └─ Drizzle ──────────► D1 "cleared-prod" (SQLite)                         │
+ │    ├─ Better Auth         /api/auth/* (sign-up, sign-in, sessions)           │
+ │    └─ Drizzle ──────────► D1 "cleared" (SQLite)                              │
  └──────────────────────────────────────────────────────────────────────────────┘
-          │ outbound fetch, only for verification / password-reset emails
-          ▼
-   Brevo transactional email API (free, 300 emails/day)
 ```
+
+The app makes no outbound calls and sends no email (§7).
 
 ---
 
@@ -79,7 +78,7 @@ These rules are hard constraints. If a feature can't be built within them, it's 
 
 1. **No paid plans anywhere.** Cloudflare stays on **Workers Free**. Never click "Upgrade to Workers Paid" ($5/month), even to get past a limit for one day.
 2. **No credit card on any account.** Workers and D1 don't need one. Avoid products that ask for one even on a free tier (for example **R2**, which OpenNext's optional caches can use; we don't use them).
-3. **No domain purchase.** The app lives at `https://cleared.<account-subdomain>.workers.dev`. That rules out anything that needs a domain you own (Clerk production instances, Cloudflare Email Service, Resend, a custom email "From" domain).
+3. **No domain purchase.** The app lives at `https://cleared.<account-subdomain>.workers.dev`. That rules out anything that needs a domain you own (Clerk production instances, Cloudflare Email Service, Resend).
 4. **Only open-source or free-forever libraries** (MIT, Apache-2.0, ISC or similar).
 5. **Hitting a limit must fail safely, not bill.** On the free plan, going over a limit makes requests fail until the daily reset at 00:00 UTC; it's never billed. §14 covers what that looks like and how to avoid it.
 6. **Every new service is checked against this list** and added to §3 with its free-tier limits before it's used.
@@ -101,8 +100,7 @@ Versions are a known-good combination on Workers Free as of November 2026. Pin e
 | Static hosting | **Workers Static Assets** | — | `/_next/static/*`, images, fonts | Free and unlimited; doesn't count toward requests |
 | Database | **Cloudflare D1** (Free) | — | All app data and auth data | 5M rows read/day, 100k rows written/day, 500 MB per DB |
 | ORM / migrations | **Drizzle ORM** + **drizzle-kit** | 0.45 / 0.31 | Typed queries, `db.batch()`, SQL migrations applied by Wrangler | $0 |
-| Auth | **Better Auth** (email + password) | 1.7 | Sign-up, sign-in, email verification, password reset, sessions | $0 (MIT); uses our Worker and D1 quotas |
-| Email | **Brevo** transactional API (Free) | — | Verification and password-reset emails | **300 emails/day**, "Sent with Brevo" footer |
+| Auth | **Better Auth** (email + password) | 1.7 | Sign-up, sign-in, change password, sessions | $0 (MIT); uses our Worker and D1 quotas |
 | Validation | **Zod** | 4.6 | Every action input, route handler query, form | $0 |
 | Styling | **Tailwind CSS** | 4.3 | Mobile-first styles; semantic tokens in `globals.css` | $0 |
 | Components | **shadcn/ui** (Radix) | CLI 4.x | Accessible dialogs, selects, tables, alert dialogs | $0 |
@@ -127,8 +125,8 @@ Versions are a known-good combination on Workers Free as of November 2026. Pin e
 | Not free | Why it isn't needed |
 |---|---|
 | Paper/stickers to print QR labels | Physical materials, not software. Plain paper and tape work for a demo |
-| A custom domain (~$10–20/year) | Optional. Without one, the app uses `*.workers.dev` and Brevo rewrites the email sender (§7.2) |
-| Paid plans (Workers Paid $5/month, Brevo Starter, GitHub Pro) | Never required. Cleared is designed to fit the free limits below |
+| A custom domain (~$10–20/year) | Optional. Without one, the app uses `*.workers.dev` |
+| Paid plans (Workers Paid $5/month, GitHub Pro) | Never required. Cleared is designed to fit the free limits below |
 
 ### 3.2 Free limits for every technology
 
@@ -144,7 +142,7 @@ Checked November 2026 (sources in §19). Daily Cloudflare limits reset at **00:0
 | | Subrequests | 50 per request (1,000 to Cloudflare services) | Request fails | ≤ 10 D1 calls per request; `db.batch()` counts as one |
 | | Worker size | 64 MiB uncompressed | Deploy refused | Lean server dependencies |
 | | Startup time | 1 s | Deploy refused | No heavy module-level code |
-| | Workers per account | 100 | Can't create more | We use 2 (staging, production) |
+| | Workers per account | 100 | Can't create more | We use 1 (one deployment, no staging) |
 | | Env vars + secrets | 64 per Worker, 5 KB each | Deploy refused | We use ~10 |
 | | Cron Triggers | 5 per account | — | Not used (no background jobs) |
 | | Version history | 30 days | Older versions can't be rolled back to | `wrangler rollback` within 30 days |
@@ -167,17 +165,6 @@ Checked November 2026 (sources in §19). Daily Cloudflare limits reset at **00:0
 | **Workers Logs** | Events | **200,000 / day**, **3-day** retention (pricing change announced for **Dec 1, 2026**) | Logging stops for the day; the app keeps working | No noisy logging; sampling if needed (§4.5) |
 | **`workers.dev`** | Subdomains | **1 per account** (each Worker gets `<name>.<subdomain>.workers.dev`) | — | Pick once; labels encode it (§4.6) |
 | **Cloudflare API** (used by Wrangler) | Requests | 1,200 per 5 minutes per user | 429 for 5 min | Only deploys and migrations call it |
-
-#### Email
-
-| Technology | Limit (free) | Value | When exceeded | Where Cleared deals with it |
-|---|---|---|---|---|
-| **Brevo** | Emails | **300 / day** (transactional and marketing combined) | Up to 1,000 extra transactional emails wait in a retry queue; anything beyond that **isn't delivered** | App stops at `EMAIL_DAILY_CAP` = 280 with a clear message (§7.2) |
-| | API rate | 1,000 requests/s; max 2,000 recipients per request | 429 | We send one email per request |
-| | Contacts | 100,000 stored | — | Not used (transactional only) |
-| | Users | 1 per account | — | Use a project mailbox |
-| | Sender | Free-mail senders rewritten to a `brevosend.com`-style address; "Sent with Brevo" footer | — | Display name "Cleared" + `replyTo` (§7.2) |
-| | Account | New accounts may need approval before sending | Emails don't send | Create the account early (Phase 0) |
 
 #### Source control
 
@@ -245,7 +232,7 @@ OpenNext puts the build's static files in `.open-next/assets`, served by Workers
 | Rows written | **100,000 / day** | Each index on a written column adds a write. Keep indexes purposeful |
 | Max DB size | **500 MB** | Years of makerspace data are a few MB |
 | Storage per account | 5 GB | — |
-| Databases per account | 10 | We use 2 (staging, production). Local dev and test databases don't count |
+| Databases per account | 10 | We use 1 (`cleared`). Local dev and test databases don't count |
 | Queries per invocation | 50 (`db.batch()` = 1) | — |
 | Bound parameters | 100 per query | Chunk large `IN (…)` lists |
 | Time Travel | **7 days** point-in-time restore | Backup safety net (Phase 7 runbook) |
@@ -267,17 +254,17 @@ OpenNext puts the build's static files in `.open-next/assets`, served by Workers
 
 - `"observability": { "enabled": true }`. Free: **200,000 events/day**, **3-day retention**.
 - **Pricing change announced for December 1, 2026.** Re-check before Phase 0. If free logging shrinks, sample with `head_sampling_rate` or turn it off and use `wrangler tail`.
-- **Never log** emails, passwords, reset or verification tokens, session cookies, fault descriptions or member names.
+- **Never log** emails, passwords, session tokens or cookies, fault descriptions or member names.
 
 ### 4.6 The `workers.dev` URL (it must never change)
 
-- Pick the **account subdomain** once (`setup-and-deploy.md` §3). The production URL is `https://cleared.<your-subdomain>.workers.dev`.
+- Pick the **account subdomain** once (`setup-and-deploy.md` §3). The app's URL is `https://cleared.<your-subdomain>.workers.dev` (one deployment, no staging).
 - **QR labels encode this URL.** Changing the subdomain or Worker name, or later moving to a custom domain, means **reprinting every label**.
-- It's stored as `PUBLIC_BASE_URL` (and `BETTER_AUTH_URL`). **Labels and the join link are always built from `PUBLIC_BASE_URL`, never from the request host** (a label printed while browsing staging or localhost must not point there).
+- It's stored as `PUBLIC_BASE_URL` (and `BETTER_AUTH_URL`). **Labels and the join link are always built from `PUBLIC_BASE_URL`, never from the request host** (a label printed while browsing a local or preview server must not point there).
 
 ### 4.7 `wrangler.jsonc`
 
-The committed file keeps the placeholders (`<your-subdomain>`, database IDs); `npm run check` rejects real values in it. Each deployment's values live in the git-ignored `cleared.config.json`, and `scripts/render-wrangler.mjs` renders them into a git-ignored `wrangler.deploy.jsonc` that every remote command uses (`setup-and-deploy.md` §7).
+The committed file keeps the placeholders (`<your-subdomain>`, `<database-id>`); `npm run check` rejects real values in it. Your values live in the git-ignored `cleared.config.json`, and `scripts/render-wrangler.mjs` renders them into a git-ignored `wrangler.deploy.jsonc` that every remote command uses (`setup-and-deploy.md` §7).
 
 ```jsonc
 {
@@ -286,46 +273,23 @@ The committed file keeps the placeholders (`<your-subdomain>`, database IDs); `n
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-11-20",                 // the Phase 0 date
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
-  "secrets": { "required": ["BETTER_AUTH_SECRET", "BREVO_API_KEY", "EMAIL_FROM_ADDRESS"] },
+  "secrets": { "required": ["BETTER_AUTH_SECRET"] },
   "workers_dev": true,
   "preview_urls": false,
   "observability": { "enabled": true },
   "vars": {
     "ENVIRONMENT": "production",
     "PUBLIC_BASE_URL": "https://cleared.<your-subdomain>.workers.dev",
-    "BETTER_AUTH_URL": "https://cleared.<your-subdomain>.workers.dev",
-    "REQUIRE_EMAIL_VERIFICATION": "true",
-    "EMAIL_FROM_NAME": "Cleared",
-    "EMAIL_DAILY_CAP": "280"
+    "BETTER_AUTH_URL": "https://cleared.<your-subdomain>.workers.dev"
   },
   "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
   "services": [{ "binding": "WORKER_SELF_REFERENCE", "service": "cleared" }],
   "d1_databases": [
-    { "binding": "DB", "database_name": "cleared-prod", "database_id": "<prod-database-id>", "migrations_dir": "drizzle" }
+    { "binding": "DB", "database_name": "cleared", "database_id": "<database-id>", "migrations_dir": "drizzle" }
   ],
   "ratelimits": [
     { "name": "RL_ACTIONS", "namespace_id": "1001", "simple": { "limit": 20, "period": 60 } }
-  ],
-  "env": {
-    "staging": {
-      "name": "cleared-staging",
-      "vars": {
-        "ENVIRONMENT": "staging",
-        "PUBLIC_BASE_URL": "https://cleared-staging.<your-subdomain>.workers.dev",
-        "BETTER_AUTH_URL": "https://cleared-staging.<your-subdomain>.workers.dev",
-        "REQUIRE_EMAIL_VERIFICATION": "true",
-        "EMAIL_FROM_NAME": "Cleared (staging)",
-        "EMAIL_DAILY_CAP": "50"
-      },
-      "services": [{ "binding": "WORKER_SELF_REFERENCE", "service": "cleared-staging" }],
-      "d1_databases": [
-        { "binding": "DB", "database_name": "cleared-staging", "database_id": "<staging-database-id>", "migrations_dir": "drizzle" }
-      ],
-      "ratelimits": [
-        { "name": "RL_ACTIONS", "namespace_id": "2001", "simple": { "limit": 20, "period": 60 } }
-      ]
-    }
-  }
+  ]
 }
 ```
 
@@ -336,10 +300,11 @@ The committed file keeps the placeholders (`<your-subdomain>`, database IDs); `n
 | **Local dev** | `npm run dev` (Next dev server + `initOpenNextCloudflareForDev()` providing D1 and other bindings) | Wrangler local D1 in `.wrangler/state`, **no quota used** | Day-to-day work |
 | **Local preview** | `npm run preview` (OpenNext build in real `workerd`, `localhost:8787`) | Local D1 | Catch Workers-runtime problems before deploying |
 | **Tests** | Vitest (`workerd` pool) and Playwright against an isolated throwaway D1 (`tests/e2e/run.sh`) | Fresh per run | Automated tests |
-| **Staging** | `cleared-staging.<your-subdomain>.workers.dev` | `cleared-staging` | Every deploy lands here first; manual tests; CPU checks |
-| **Production** | `cleared.<your-subdomain>.workers.dev` | `cleared-prod` (`wnam`) | Demo and pilot; the URL on every label |
+| **The deployment** (`ENVIRONMENT=production`) | `cleared.<your-subdomain>.workers.dev` | `cleared` (`wnam`) | Manual tests and CPU checks while it holds only demo data; then demo and pilot. The URL on every label |
 
-**Daily quotas are per Cloudflare account and shared by all Workers on it,** including any other Workers you run on the same account. Keep staging traffic light and run E2E locally.
+There is **no staging environment** (decided 2026-11-23). Until real users exist, the deployment is the test bed. After that, changes are tested locally first (`npm run check`, `npm run test:e2e`, `npm run preview`), and `wrangler rollback` (code) and D1 Time Travel (data, 7 days) are the undo (`setup-and-deploy.md` §10). `ENVIRONMENT` is `development`, `test` or `production`.
+
+**Daily quotas are per Cloudflare account and shared by all Workers on it,** including any other Workers you run on the same account. Run E2E locally.
 
 ---
 
@@ -348,7 +313,7 @@ The committed file keeps the placeholders (`<your-subdomain>`, database IDs); `n
 ### 5.1 How it fits together
 
 - `@opennextjs/cloudflare` builds the Next.js output into `.open-next/worker.js` + `.open-next/assets`. `npm run deploy` runs `scripts/deploy.sh`: render `wrangler.deploy.jsonc` → `opennextjs-cloudflare build` → bundle scan → `opennextjs-cloudflare deploy` → smoke test (§11.3).
-- **Bindings** (`DB`, `RL_ACTIONS`) are read with `getCloudflareContext().env` (e.g. `src/db/index.ts`). **Vars and secrets** (`PUBLIC_BASE_URL`, `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `ENVIRONMENT`, `REQUIRE_EMAIL_VERIFICATION`, `ENABLE_DEV_OUTBOX`, …) are read with **`getEnv()` from `src/lib/env.ts`**: it returns the same bindings, but under `next dev` it applies the E2E harness's `process.env` overrides (random port, `ENVIRONMENT=test`). Reading vars straight from `getCloudflareContext().env` makes E2E sign-up and the test-only rate-limit switch silently use the wrong values.
+- **Bindings** (`DB`, `RL_ACTIONS`) are read with `getCloudflareContext().env` (e.g. `src/db/index.ts`). **Vars and secrets** (`PUBLIC_BASE_URL`, `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `ENVIRONMENT`, `ENABLE_SPIKES`, …) are read with **`getEnv()` from `src/lib/env.ts`**: it returns the same bindings, but under `next dev` it applies the E2E harness's `process.env` overrides (random port, `ENVIRONMENT=test`). Reading vars straight from `getCloudflareContext().env` makes E2E sign-up and the test-only rate-limit switch silently use the wrong values.
 - In dev, `initOpenNextCloudflareForDev()` in `next.config.ts` gives `next dev` the same bindings against local D1.
 - `open-next.config.ts` stays the default `defineCloudflareConfig()`: **no incremental cache, no R2, no KV**. Every page is dynamic (it depends on who's signed in), so ISR caching would add nothing.
 
@@ -392,10 +357,10 @@ It owns four tables (generated by its CLI, migrated with drizzle-kit like any ot
 
 | Table | Holds |
 |---|---|
-| `user` | id, name, **email (unique, lowercased)**, `emailVerified`, timestamps |
+| `user` | id, name, **email (unique, lowercased)**, `emailVerified` (always false: Cleared never verifies addresses), timestamps |
 | `account` | How a user signs in. For email + password: `providerId = "credential"` and the **password hash** |
 | `session` | One row per signed-in browser: token, expiry, IP, user agent |
-| `verification` | Short-lived tokens for email verification and password reset |
+| `verification` | Short-lived tokens for emailed links. Created by Better Auth's schema but unused, because Cleared sends no email (§7) |
 
 Roles (`admin`/`staff`/`member`) and suspension **are not Better Auth's job**. They live in our own `members` table, linked by `members.auth_user_id` (PRD 10.2: roles in our own table).
 
@@ -403,19 +368,18 @@ Roles (`admin`/`staff`/`member`) and suspension **are not Better Auth's job**. T
 
 | Flow | What happens |
 |---|---|
-| **Sign up** (`POST /api/auth/sign-up/email`) | Validates the email and password length → **hashes the password (scrypt)** → inserts `user` + `account` → sends a **verification email** (Brevo) → no session yet if verification is required |
-| **Verify email** (link in the email) | `verification` token checked → `user.emailVerified = true` → session created (auto sign-in) → redirect to `next` |
-| **Sign in** (`POST /api/auth/sign-in/email`) | Looks up the `account` by email → **verifies the password against the hash (scrypt)** → refuses if the email isn't verified (when required) → inserts a `session` row → sets a signed cookie |
+| **Sign up** (`POST /api/auth/sign-up/email`) | Validates the email and password length → **hashes the password (scrypt)** → inserts `user` + `account` → creates a `session` (auto sign-in) → redirect to `next` |
+| **Sign in** (`POST /api/auth/sign-in/email`) | Looks up the `account` by email → **verifies the password against the hash (scrypt)** → inserts a `session` row → sets a signed cookie |
 | **Each request** | `getSession()` reads the cookie → checks the signature → loads the `session` row (or trusts the short-lived signed **cookie cache**, skipping D1) → returns the user. Our `getCurrentMember()` then loads `members` (role, status) |
 | **Sign out** | Deletes the `session` row and clears the cookie |
-| **Forgot password** | `requestPasswordReset` → token in `verification` → reset email → the user sets a new password (hashed again) → other sessions can be revoked |
+| **Forgot password** | No self-service reset (no email). The user asks staff; an admin sets a temporary password with a local script (§6.6) |
 | **Change password** | Verify the current password (hash) → hash the new one |
 
 Next.js specifics: `getAuth()` builds the instance **per request** from `getEnv()` (vars and secrets, so the E2E overrides apply) and `getDb()`; the handler is mounted at `src/app/api/auth/[...all]/route.ts`; the `nextCookies()` plugin (last in the list) lets server actions set cookies; session reads go inside `<Suspense>`.
 
 ### 6.3 Configuration (`src/lib/auth.ts`)
 
-Option names follow Better Auth 1.7; confirm against the installed version.
+Option names follow Better Auth 1.7; confirm against the installed version. The real file adds a display-name check on sign-up (`databaseHooks`), disables `/update-user`, turns telemetry off and routes Better Auth's logger through `log()` with emails scrubbed (Phase 1 §11).
 
 ```ts
 export function getAuth() {
@@ -431,18 +395,7 @@ export function getAuth() {
       enabled: true,
       minPasswordLength: 8,
       maxPasswordLength: 128,
-      requireEmailVerification: env.REQUIRE_EMAIL_VERIFICATION === "true",
-      autoSignIn: false,                         // no session until the email is verified
-      resetPasswordTokenExpiresIn: 60 * 60,      // 1 hour
-      revokeSessionsOnPasswordReset: true,
-      sendResetPassword: async ({ user, url }) => email(env, db).passwordReset(user.email, url),
-      // password: { hash, verify }               // only if spike S1 says native scrypt is needed (§6.4)
-    },
-    emailVerification: {
-      sendOnSignUp: true,
-      autoSignInAfterVerification: true,
-      expiresIn: 60 * 60 * 24,                   // 24 hours
-      sendVerificationEmail: async ({ user, url }) => email(env, db).verifyEmail(user.email, url),
+      autoSignIn: true,                          // signed in straight after sign-up (no email verification, §7)
     },
     session: {
       expiresIn: 60 * 60 * 24 * 30,              // 30 days: students stay signed in on their phone
@@ -455,8 +408,6 @@ export function getAuth() {
       customRules: {
         "/sign-in/email": { window: 60, max: 5 },
         "/sign-up/email": { window: 60, max: 3 },
-        "/request-password-reset": { window: 300, max: 3 },
-        "/send-verification-email": { window: 300, max: 3 },
       },
     },
     advanced: { ipAddress: { ipAddressHeaders: ["cf-connecting-ip"] } },
@@ -469,75 +420,54 @@ export function getAuth() {
 
 | # | Restriction | Why | What we do |
 |---|---|---|---|
-| 1 | **Password hashing vs. the 10 ms CPU limit** | Better Auth hashes with **scrypt** (N=16384, r=16), deliberately slow so stolen hashes are hard to crack. One hash takes **tens of ms of CPU**; the pure-JS version, measured on Workers, is ~80 ms. That's above the free plan's documented 10 ms per request. It happens on **sign-up, sign-in, password reset and password change** only. Every other request is unaffected | **Evidence (Nov 2026):** a comparable production app with this exact setup (Better Auth default scrypt, Next.js + OpenNext, Workers Free) **registers and signs in without failures**. Cloudflare evidently doesn't fail these requests in practice, so **we keep the default hashing**. **Remaining check (spike S1, now light):** after Cleared's first staging deploy, do a handful of sign-ups/sign-ins and confirm no Error 1102 in Workers Logs; keep watching auth routes for 1102s during the pilot (Phase 7 CPU audit). **Only if failures ever appear:** 0 failures → keep the default. Any failures → switch to **native `node:crypto` scrypt** with the same parameters and hash format (several times faster than the JS version, and hashes stay compatible) and re-measure. Still failing → fall back to **Google sign-in + email one-time codes** (no hashing). **Never lower the scrypt cost to fit, and never pay** |
-| 2 | **Email is needed for verification and password reset** | Better Auth generates the links; we must send them | Brevo free API (§7). If email fails, `REQUIRE_EMAIL_VERIFICATION=false` can be switched off for a demo, and admins can set a temporary password with a local script (§6.6) |
-| 3 | **300 emails/day** (Brevo free) | Each sign-up sends 1 verification email; each reset sends 1 | Daily counter in D1 stops at 280 with a clear message; sessions last 30 days so resets are rare; term-start onboarding can be staggered |
+| 1 | **Password hashing vs. the 10 ms CPU limit** | Better Auth hashes with **scrypt** (N=16384, r=16), deliberately slow so stolen hashes are hard to crack. One hash takes **tens of ms of CPU** (76–104 ms measured on Workers). That's above the free plan's documented 10 ms per request. It happens on **sign-up, sign-in and password change** only. Every other request is unaffected. On Workers, Better Auth's default hasher is **already native `node:crypto` scrypt** (`@better-auth/utils/password` has a `workerd` export condition), so there is no faster drop-in | **Measured (spike S1 + P1-01, Nov 2026):** 10 sequential sign-ins succeed; bursts of 50 from one client get some **503s (Error 1102)**. Classroom load is far gentler: one sign-up per student, 30-day sessions, separate phones. **Decision (project owner, 2026-11-23): keep the default hashing**, and the auth client **retries a 503 on sign-up/sign-in up to twice** (Phase 1 §4.1). Keep watching auth routes for 1102s (Phase 1 P1-63, Phase 7 P7-33). If real users still hit failures, fall back to **Google sign-in** (no hashing, no email). **Never lower the scrypt cost to fit, and never pay** |
+| 2 | **No email, so no address verification** (§7) | Cleared sends no email | Anyone can register with an address they don't own. Low risk: joining needs the join link staff hand out, and staff see every member's name. Unused accounts without a membership are harmless rows; Phase 7 documents a cleanup query |
+| 3 | **No email, so no self-service password reset** (§7) | Same | Sessions last 30 days, so forgotten passwords are rare; an admin resets one with a local script (§6.6) |
 | 4 | **The built-in rate limiter defaults to in-memory**, which isn't shared across Worker isolates | Workers run many isolates | `storage: "database"`: about one D1 write per auth attempt (small) |
 | 5 | **Sessions read D1** on every request | Database sessions | `cookieCache` (5 min) skips most reads. Suspension is still checked on every request through our `members` table, so it applies immediately |
 | 6 | **No MFA, passkeys or SSO in the MVP** | Scope | Better Auth has free plugins (`twoFactor`, `passkey`, generic OAuth) for P1. University SSO is P1 |
-| 7 | **We own the security work** | Self-hosted | Password length 8–128; rate limits; generic "email or password is incorrect" messages (no account enumeration); HTTPS-only cookies; secrets only as Worker secrets; optional `haveIBeenPwned` plugin (free, k-anonymity) evaluated in Phase 7 |
+| 7 | **We own the security work** | Self-hosted | Password length 8–128; rate limits; one generic "email or password is incorrect" message on sign-in; HTTPS-only cookies; secrets only as Worker secrets; optional `haveIBeenPwned` plugin (free, k-anonymity) evaluated in Phase 7 |
 | 8 | **Better Auth owns its table shapes** | Upgrades may add columns | Pin the version; regenerate the schema with its CLI on upgrade; additive migrations only |
 | 9 | **Requires `nodejs_compat`** | It uses Node APIs | Already in `compatibility_flags` |
 | 10 | **Session cookie cache delays sign-out on other devices by ≤ 5 min** | Signed cookie trusted for its lifetime | Acceptable; suspension unaffected (restriction 5) |
-| 11 | **Unverified sign-ups can squat an email** (someone registers with another person's address) | Before verification | `requireEmailVerification: true`: unverified accounts can't sign in. They're harmless rows; Phase 7 documents a cleanup query |
+| 11 | **Sign-up reveals that an address is already registered** | With auto sign-in on, Better Auth answers "user already exists" | Accepted: the cost of one less screen for students. Sign-in still gives one generic error, and sign-up is rate-limited (3/min per IP) |
 
 ### 6.5 What it costs in quota
 
 | Action | Worker requests | D1 rows written | CPU |
 |---|---|---|---|
-| Sign up | 1 (+1 when the link is clicked) | ~5 (user, account, verification, rate limit, session) | **scrypt hash** |
+| Sign up | 1 | ~4 (user, account, rate limit, session) | **scrypt hash** |
 | Sign in | 1 | ~3 (session, rate limit) | **scrypt verify** |
 | Any page or action while signed in | 0 extra | 0 (cookie cache) or 1 read | negligible |
-| Password reset | 2 | ~4 | **scrypt hash** |
+| Change password | 1 | ~2 | **scrypt verify + hash** |
 
-### 6.6 Admin password reset without email (runbook)
+### 6.6 Password reset by an admin (runbook)
 
-If email is down, an admin can set a temporary password for a member:
+Cleared sends no email, so this is the only way to reset a forgotten password. Staff confirm who the member is (in person), then an admin sets a temporary password:
 
-1. On a laptop, run `npx tsx scripts/set-password.ts <email> <temp-password>`. It hashes locally with `hashPassword` from `better-auth/crypto` (as the seed script does), so it uses no Worker CPU.
-2. The script runs `node scripts/render-wrangler.mjs` first, then the equivalent of `npm run remote -- d1 execute cleared-prod --remote --command "UPDATE account SET password = ? WHERE provider_id = 'credential' AND user_id = (SELECT id FROM user WHERE email = ?)"` (the committed `wrangler.jsonc` only has placeholder database IDs).
-3. The member signs in and changes the password.
+1. On a laptop, run `npx tsx scripts/set-password.ts <email> <temp-password>` (add `--local` for your local D1). It hashes locally with `hashPassword` from `better-auth/crypto`, so it uses no Worker CPU.
+2. The script runs `node scripts/render-wrangler.mjs` first, then the equivalent of `npm run remote -- d1 execute DB --remote --command "UPDATE account SET password = … WHERE provider_id = 'credential' AND user_id = (SELECT id FROM "user" WHERE email = …) RETURNING id; DELETE FROM session WHERE user_id = (…)"` (the committed `wrangler.jsonc` only has a placeholder database ID). It says so if no email + password account has that email, and it signs the member out everywhere.
+3. The member signs in and changes the password on their Account page.
 
 ### 6.7 No test-auth stub
 
 The PRD (11.1) wanted a test-only auth stub. With email + password, **we don't need one**:
 
 - **Service tests** call service functions directly with an `actor` argument (§9), so no auth is involved.
-- **E2E tests** sign up real accounts through the real Better Auth flow against a throwaway local D1. In dev and test, the email sender keeps verification links in a dev-only outbox the E2E reads (§7.3).
+- **E2E tests** sign up real accounts through the real Better Auth flow against a throwaway local D1.
 
 So there's **no auth bypass anywhere in the code**. That's stronger than PRD 11.1's "refuse to start if the stub is enabled".
 
 ---
 
-## 7. Email
+## 7. Email: none
 
-### 7.1 Decision: Brevo free transactional API
+**Cleared sends no email** (decided 2026-11-23, at the project owner's request). The free options all had a blocker: Brevo's sign-up requires an organization postal address, and Resend and Cloudflare Email Service need a domain we own (§2). Fault alerts and staff invites were already P1 (PRD 5.3).
 
-Email is used **only** for verification and password-reset links in the MVP. Fault alerts and staff invites are P1 (PRD 5.3).
+The email address is still the sign-in identifier, but it's never verified and nothing is ever sent to it. Two consequences, both accepted (§6.4 rows 2, 3 and 11):
 
-| Option | Free? | Needs our own domain? | Verdict |
-|---|---|---|---|
-| Cloudflare Email Service | Free plan sends **only to verified addresses on your own account**; anyone else needs Workers Paid | **Yes** | ✘ |
-| Cloudflare Email Routing `send_email` | Free | Yes; recipients must be verified | ✘ |
-| Resend | 100/day | **Yes** (without one, only to your own address) | ✘ |
-| **Brevo** (**chosen**) | **300/day**, no card | **No.** Verify a single sender address (a project Gmail) | ✔ |
-| Gmail SMTP from the Worker (TCP sockets + app password) | 500/day | No | Fallback only |
-
-**Integration:** one `fetch` to `https://api.brevo.com/v3/smtp/email` with the `BREVO_API_KEY` secret, wrapped in an `EmailSender` interface (`verifyEmail(to, url)`, `passwordReset(to, url)`) so the provider can be swapped.
-
-### 7.2 Email risks
-
-| Risk | Mitigation |
-|---|---|
-| **Free-mail sender is rewritten.** Brevo can't authenticate a Gmail/Outlook-style sender, so it **replaces the From address** with one on its own domain (e.g. `name@123456.brevosend.com`). The email then passes SPF/DKIM/DMARC under Brevo's domain and usually reaches the inbox, but the sender address looks unfamiliar | Display name "Cleared" so the inbox shows a recognisable name; **`replyTo`** set to the real address so replies don't go to Brevo; the sign-up screen says "look for an email from *Cleared*" and "check spam". Phase 1 spike (P1-01) tests Gmail, Outlook and a university inbox. Owning a domain would remove the rewrite, but costs money (§2) |
-| **300/day cap** | D1 counter (`email_send_log`) stops at `EMAIL_DAILY_CAP` (280): "Email is busy today. Try again after 5 pm" (00:00 UTC is 5 pm MST, 6 pm MDT). Re-sending is rate-limited |
-| **New Brevo accounts may need approval** | Create the account in Phase 0 |
-| **"Sent with Brevo" footer** | Acceptable |
-
-### 7.3 Dev and test email
-
-- `ConsoleEmailSender` (when `ENVIRONMENT` is `development` or `test`): logs "verification email for <redacted>" and stores the link in an **in-memory dev outbox**.
-- `GET /api/dev/outbox?email=…` returns the latest link, **only** when `process.env.NODE_ENV === "development"` **and** `ENABLE_DEV_OUTBOX=1`. Otherwise the route returns 404. The guard is enforced by: `wrangler.jsonc` never containing `ENABLE_DEV_OUTBOX` and the client bundle never containing it (both checked by `npm run check` and every deploy), and a Phase 1 route test covering all four `NODE_ENV` × `ENABLE_DEV_OUTBOX` combinations. Phase 1 adds a server-bundle marker check for the outbox handler, like the one for `getEnv()`'s dev-only branch. Playwright uses the outbox to click verification links.
+- **No verification:** sign-up signs you in straight away, and anyone can register with an address they don't own.
+- **No self-service password reset:** a forgotten password is reset by an admin with `scripts/set-password.ts` (§6.6). Changing your own password while signed in still works.
 
 ---
 
@@ -568,7 +498,7 @@ A standard App Router layout, plus a **service layer** so business rules can be 
 ```
 src/
 ├─ app/
-│  ├─ (auth)/sign-in, sign-up, verify, forgot-password, reset-password
+│  ├─ (auth)/sign-in, sign-up
 │  ├─ (member)/machines, m/[token], me/certifications, help, join/[token]
 │  ├─ console/  (home, faults, checkups, machines, machines/[id], rooms, members, certifications, labels, settings)
 │  ├─ setup/
@@ -576,16 +506,15 @@ src/
 │     ├─ auth/[...all]/route.ts      Better Auth
 │     ├─ status-board/route.ts       GET + ETag
 │     ├─ console/route.ts            GET + ETag
-│     ├─ health/route.ts             GET (deploy smoke test)
-│     └─ dev/outbox/route.ts         dev only
+│     └─ health/route.ts             GET (deploy smoke test)
 ├─ actions/        "use server" wrappers: getActor() → parse() → service → refresh()/redirect
 ├─ data/           read queries for Server Components (call services' read functions)
 ├─ server/
 │  ├─ services/    the business rules: (db, actor, input, now) → result. No Next.js imports
 │  ├─ domain/      pure logic: pass engine, session rules, checkups, time maths
-│  ├─ authz.ts     requireMember / requireRole / can() on an Actor
-│  ├─ machine-write.ts   write-token compare-and-swap helper (§12.2)
-│  └─ email.ts     EmailSender implementations
+│  ├─ authz.ts     requireUser / requireMember / requireRole on an Actor
+│  ├─ batch.ts     atomic D1 batch that accepts raw `sql` and query builders (§16)
+│  └─ machine-write.ts   write-token compare-and-swap helper (§12.2)
 ├─ db/             schema.ts, index.ts (getDb), auth-schema.ts
 ├─ lib/            auth.ts, auth-client.ts, actor.ts (session → Actor), action.ts, permissions.ts, validation.ts
 └─ components/     ui/ (shadcn), StatusBadge, PassCard, MachineTile, …
@@ -611,7 +540,7 @@ src/
 | **Service integration [A]** | Vitest + `@cloudflare/vitest-plugin` | Inside `workerd` with a real local D1, migrations applied, isolated per test file | PRD **T02–T10**: call services with actors of every role, control `now`, run concurrent calls with `Promise.all` |
 | Route handlers | Same pool | `workerd` | Board/console JSON shape, privacy, ETag/304 |
 | **E2E** | Playwright against `next dev` on a throwaway D1 (`tests/e2e/run.sh`) | Local | Real sign-up → verify → sign-in; the PRD 5.1 10-step demo; 375 px and 320 px layouts; axe accessibility checks |
-| **Manual [M]** | Physical phones + printed labels | Staging, production | **T01, T11, T12**; CPU spikes S1/S2 |
+| **Manual [M]** | Physical phones + printed labels | The deployment | **T01, T11, T12**; CPU spikes S1/S2 |
 
 - E2E uses **`@playwright/test` (Node)** so tests share TypeScript types with the app.
 - E2E runs against the dev server partly because Better Auth rate-limits sign-ups outside development. In E2E, set the rate-limit rules high through an env var that's only read when `ENVIRONMENT=test`.
@@ -635,16 +564,16 @@ Node.js 22+, npm, TypeScript (strict), ESLint (`eslint-config-next`), Wrangler 4
 | `preview` | `opennextjs-cloudflare build && opennextjs-cloudflare preview` (real `workerd`) |
 | `check` | Everything that must pass before a deploy (§11.3) |
 | `config:render` | Write `wrangler.deploy.jsonc` from `wrangler.jsonc` + `cleared.config.json` |
-| `deploy` / `deploy:staging` | `scripts/deploy.sh production\|staging`: render config → build → bundle scan → deploy → smoke test. Extra arguments are rejected |
-| `deploy:first` / `deploy:first:staging` | The same with `--first`: prompts for the Brevo key, generates `BETTER_AUTH_SECRET`, uploads secrets with `--secrets-file`; refuses if the environment already has them |
+| `deploy` | `scripts/deploy.sh`: render config → build → bundle scan → deploy → smoke test. Extra arguments are rejected |
+| `deploy:first` | The same with `--first`: generates `BETTER_AUTH_SECRET` and uploads it with `--secrets-file`; refuses if the Worker already has it |
 | `remote` | `wrangler --config wrangler.deploy.jsonc …` (remote D1 commands) |
 | `lint`, `typecheck` | ESLint; `next typegen && tsc --noEmit` |
 | `test` | Vitest (unit + service tests in `workerd`, client tests in happy-dom) + `node --test` script tests |
 | `cf-typegen` | Regenerate `cloudflare-env.d.ts` (`scripts/cf-typegen.mjs`, deterministic) |
 | `test:e2e` | Playwright on an isolated D1 |
 | `db:generate` | drizzle-kit migration from `schema.ts` |
-| `db:migrate` / `db:migrate:staging` / `db:migrate:remote` | Apply migrations locally / staging / production |
-| `db:seed` | Clearly fake demo data (local or staging) |
+| `db:migrate` / `db:migrate:remote` | Apply migrations locally / to the deployment |
+| `db:seed` | Clearly fake demo data (local) |
 
 ### 11.3 Checks and deploys (local, no CI/CD)
 
@@ -652,12 +581,12 @@ There's **no CI/CD service** (decided 2026-11-22). The checks a CI server would 
 
 | Command | Steps |
 |---|---|
-| `npm run check` | Repo guards (no `.env*` tracked, no `ENABLE_DEV_OUTBOX` in `wrangler.jsonc`, placeholders only in committed config) → lint → typecheck → `cloudflare-env.d.ts` freshness → `test` → `build:worker` (Next.js + OpenNext) → bundle scan (no secrets in client assets) |
-| `npm run test:e2e` | Playwright on a throwaway local D1; run before production deploys |
-| `npm run db:migrate:staging` / `db:migrate:remote` | Apply D1 migrations (always before the code that needs them) |
-| `npm run deploy:staging` / `deploy` | Render `wrangler.deploy.jsonc` → OpenNext build → deploy → smoke test `GET /api/health` returns the commit SHA |
+| `npm run check` | Repo guards (no `.env*` tracked, no `ENABLE_SPIKES` in `wrangler.jsonc`, placeholders only in committed config) → lint → typecheck → `cloudflare-env.d.ts` freshness → `test` → `build:worker` (Next.js + OpenNext) → bundle scan (no secrets in client assets) |
+| `npm run test:e2e` | Playwright on a throwaway local D1; run before every deploy once there are real users |
+| `npm run db:migrate:remote` | Apply D1 migrations (always before the code that needs them) |
+| `npm run deploy` | Render `wrangler.deploy.jsonc` → OpenNext build → deploy → smoke test `GET /api/health` returns the commit SHA |
 
-- **Migrations run before the deploy**, so only **additive** migrations are allowed once production has data.
+- **Migrations run before the deploy**, so only **additive** migrations are allowed once the deployment has data.
 - Deploying from a headless machine: `CLOUDFLARE_API_TOKEN` (Workers Scripts: Edit, D1: Edit, this account only) and `CLOUDFLARE_ACCOUNT_ID` in the shell environment, never in a file.
 - Rollback: `wrangler rollback`; data: D1 Time Travel (7 days).
 
@@ -744,7 +673,7 @@ A session is active while `ended_at IS NULL AND now < expected_end_at`. Expired-
 | Server action (start/end session, report fault, sign off) | 1 (+0; the page refresh comes back in the same response) | ~10–30 | ~3–8 |
 | Log service record | 1 | ~20–40 | ~5–12 |
 | Sign in | 1 | ~5 | ~3 |
-| Sign up + verify | 2 + 1 email | ~6 | ~6 |
+| Sign up | 1 | ~4 | ~4 |
 
 ### 13.2 Scenarios
 
@@ -765,7 +694,6 @@ A session is active while `ended_at IS NULL AND now < expected_end_at`. Expired-
 5. Indexes on every hot filter; `EXPLAIN QUERY PLAN` audit in Phase 7.
 6. Better Auth `cookieCache`.
 7. Rate limits on actions and auth.
-8. Email daily cap.
 
 ---
 
@@ -777,7 +705,6 @@ A session is active while `ended_at IS NULL AND now < expected_end_at`. Expired-
 | 10 ms CPU on one request | That request fails (**Error 1102**) | Fix the code path; see §5.2 and §6.4 |
 | D1 rows read/written per day | Queries fail → the app shows "Cleared is over its free daily limit, back after 5 pm" | Automatic at 00:00 UTC |
 | D1 500 MB | Writes fail | Not realistic; retention rule (PRD 11.1) |
-| Brevo 300/day (our cap 280) | "Email is busy today" on sign-up/reset | Next day |
 | Workers Logs 200k/day | Logs stop; the app keeps working | Lower sampling |
 
 **There are never surprise charges.** The cost of a limit is downtime, so:
@@ -797,7 +724,6 @@ A session is active while `ended_at IS NULL AND now < expected_end_at`. Expired-
 | **Clerk** | Production needs an owned domain; dev instance capped at 100 users | Better Auth |
 | **OpenNext R2 incremental cache / KV tag cache** | R2 needs a card; pages are dynamic anyway | Default `defineCloudflareConfig()` |
 | **Vercel Hobby** | Free, but non-commercial use only, and it moves off D1 | Workers |
-| **Cloudflare Email Service / Resend / Postmark** | Need a domain (and Workers Paid for Cloudflare's) | Brevo |
 | **R2** (photo uploads) | Card required | No uploads (PRD 11.1: no photos) |
 | **External Postgres via Hyperdrive** | Free Hyperdrive allows only 100k **queries**/day, which is tighter than D1, and the DB needs its own host | D1 |
 | **Cron Triggers / Queues / Durable Objects** | PRD forbids background jobs; extra quotas and complexity | Lazy evaluation on read; write tokens |
@@ -814,8 +740,8 @@ Things that are known to matter for Next.js 16 + OpenNext + D1 + Better Auth on 
 | Quirk | What to do |
 |---|---|
 | OpenNext/workerd can hang when serving Next 16 **Cache Components** output | Enable `cacheComponents` only when `NODE_ENV === "development"` in `next.config.ts`. Session reads must still sit inside `<Suspense>` (the dev build enforces it) |
-| `@opennextjs/aws` expects a CommonJS default export from `cookie` when building the Worker middleware | **Not needed as of `@opennextjs/cloudflare` 1.20.18** (Phase 0 built and ran the proxy without it). If a later upgrade breaks the middleware build, add an npm `overrides` entry pinning `cookie` for `@opennextjs/aws` |
-| Next 16 `proxy.ts` always runs on the Node.js runtime; OpenNext warns that Node.js middleware on Cloudflare is "experimental" | Works in `npm run preview` (real `workerd`). Keep `proxy.ts` to a cookie-presence redirect, and re-check redirects on staging after every OpenNext upgrade |
+| `@opennextjs/aws` expects a CommonJS default export from `cookie` when building the Worker middleware (`import_cookie.default.parse`); `cookie@1.x` has none | **Needed since Phase 1:** any request that carries a cookie through `proxy.ts` failed with 500 `Cannot read properties of undefined (reading 'parse')` in `workerd` (not in `next dev`). `package.json` `overrides` pins `cookie` to `0.7.2` for `@opennextjs/aws`. Re-check after every OpenNext upgrade with signed-in requests in `npm run preview` |
+| Next 16 `proxy.ts` always runs on the Node.js runtime; OpenNext warns that Node.js middleware on Cloudflare is "experimental" | Works in `npm run preview` (real `workerd`). Keep `proxy.ts` to a cookie-presence redirect, and re-check redirects in `npm run preview` and on the deployment after every OpenNext upgrade |
 | `@cloudflare/vitest-pool-workers` was renamed `@cloudflare/vitest-plugin` (Vitest 4 API: `cloudflareTest()` plugin instead of `defineWorkersConfig`) | `vitest.config.mts` uses `cloudflareTest({ wrangler, main })` with a stub `main`, since `.open-next/worker.js` only exists after a build |
 | `wrangler.jsonc` vars are the **production** values, and `next dev` reads them | `.dev.vars` overrides `ENVIRONMENT`, `PUBLIC_BASE_URL` and `BETTER_AUTH_URL` locally; the E2E harness overrides them through `process.env`, which `src/lib/env.ts` honours only in `next dev` |
 | Builds | Use `next build --webpack` for OpenNext compatibility |
@@ -826,9 +752,17 @@ Things that are known to matter for Next.js 16 + OpenNext + D1 + Better Auth on 
 | The Next.js dev indicator covers bottom-left buttons at phone widths | Turn `devIndicators` off when `E2E=1` |
 | Better Auth's default password hashing vs the 10 ms CPU limit | Works on Workers Free in practice for comparable apps; verified by spike S1 (§6.4) |
 | Drizzle drops table names in single-table `sql` templates | Use fully qualified raw names in correlated subqueries (§12.1) |
-| First deploy needs the required secrets | `opennextjs-cloudflare deploy --secrets-file <tmp file>` (`npm run deploy:first[:staging]` → `scripts/deploy.sh --first`, `setup-and-deploy.md` §10.2) |
-| npm appends `-- args` to the **end** of a script's `&&` chain | Deploy scripts are one shell script that takes the environment from the script name and rejects extra arguments (`npm run deploy -- --env staging` would otherwise deploy production) |
-| Under `next dev` (Cache Components), dynamic reads outside `<Suspense>` error; a streamed page can't change its HTTP status, and `export const instant` is rejected by production builds without Cache Components | Gate dev/staging-only *pages* inside the Suspense boundary (they render the not-found page with status 200); gate *route handlers* normally (real 404) |
+| First deploy needs the required secrets | `opennextjs-cloudflare deploy --secrets-file <tmp file>` (`npm run deploy:first` → `scripts/deploy.sh --first`, `setup-and-deploy.md` §9.2) |
+| npm appends `-- args` to the **end** of a script's `&&` chain | Deploy scripts are one shell script that rejects extra arguments, so a passed-through flag can't silently change what deploys |
+| Under `next dev` (Cache Components), dynamic reads outside `<Suspense>` error; a streamed page can't change its HTTP status, and `export const instant` is rejected by production builds without Cache Components | Gate dev-only *pages* (spikes: development, or `ENABLE_SPIKES=1` on the deployment) inside the Suspense boundary (they render the not-found page with status 200); gate *route handlers* normally (real 404) |
+| drizzle-orm 0.45: a raw ``db.run(sql`…`)`` **with bound parameters** crashes inside `db.batch()` (`Cannot read properties of undefined (reading 'bind')`) | Mutation batches that need raw SQL use `batch(db, [...])` from `src/server/batch.ts`, which compiles each statement and calls D1's own `batch()` (still one atomic batch) |
+| Better Auth's CLI is now the `auth` package (`npx auth generate`); `@better-auth/cli` stopped at 1.4/1.5 | The Drizzle generator also ships inside `@better-auth/drizzle-adapter`; Phase 1 §11 says how `auth-schema.ts` was produced |
+| `betterAuth()` calls `Math.random()` when created; dev's Cache Components rejects that before a dynamic access | `getSessionUser()` awaits `headers()` first, then creates the instance |
+| Dev validates **instant navigation**: a session read must sit inside a `<Suspense>` *below* the layout two sibling pages share, so a group-level `loading.tsx` isn't enough | Signed-in pages render `<Gate>`, which has its own `<Suspense>` |
+| Next 16 keeps the previous page mounted but hidden after a client navigation | E2E specs locate repeated controls by role (`getByRole` skips hidden elements), not by label |
+| A Turbopack dev cache left by an interrupted E2E run can put every page into an "HMR hash mismatch" reload loop | `tests/e2e/run.sh` deletes `.next-e2e` before starting |
+| Production builds (no Cache Components) try to prerender any page that hasn't made a dynamic access yet; touching D1 (`getDb()`) first then fails the build ("Error occurred prerendering page") | Read the session (`getActor()`) or call `connection()` **before** `getDb()` in page data functions (`src/data/*`) |
+| Local `wrangler d1 execute --json` doesn't report `meta.changes` | Scripts that need a count use `RETURNING` and count rows (`scripts/set-password.ts`) |
 | Windows Git Bash checks files out with CRLF, which breaks `set -euo pipefail` | `.gitattributes`: `* text=auto eol=lf`; scripts spawn tools with `process.execPath` instead of `npx` |
 
 ---
@@ -841,8 +775,7 @@ Things that are known to matter for Next.js 16 + OpenNext + D1 + Better Auth on 
 |---|---|---|
 | Cloudflare | Workers, D1, logs | Daily quotas are shared by every Worker on an account; use a dedicated free account if you run other Workers |
 | GitHub | Repo (optional) | Hosting the code; no Actions or other paid-tier features used |
-| Brevo | Verification and reset emails | Verify a sender address |
-| Project mailbox (recommended) | Brevo sender; owner of the project accounts | Keeps personal accounts separate |
+| Project mailbox (recommended) | Owner of the project accounts | Keeps personal accounts separate |
 
 Step-by-step: [`setup-and-deploy.md`](./setup-and-deploy.md).
 
@@ -850,13 +783,11 @@ Step-by-step: [`setup-and-deploy.md`](./setup-and-deploy.md).
 
 | Name | Kind | Where |
 |---|---|---|
-| `BETTER_AUTH_SECRET` | secret (`openssl rand -base64 32`) | Worker secret per environment (different values); `.dev.vars` locally |
-| `BREVO_API_KEY` | secret | Worker secret (staging, production) |
-| `EMAIL_FROM_ADDRESS` | secret | Worker secret |
-| `PUBLIC_BASE_URL`, `BETTER_AUTH_URL` | var | `wrangler.jsonc` per environment, with `<your-subdomain>` filled in from `cleared.config.json` at deploy time |
-| Workers subdomain, D1 database IDs | deployment config (not secret, but personal) | Git-ignored `cleared.config.json` (or `WORKERS_SUBDOMAIN`, `D1_PRODUCTION_ID`, `D1_STAGING_ID` environment variables) |
-| `ENVIRONMENT`, `REQUIRE_EMAIL_VERIFICATION`, `EMAIL_FROM_NAME`, `EMAIL_DAILY_CAP` | var | `wrangler.jsonc` |
-| `ENABLE_DEV_OUTBOX` | var | `.dev.vars` / E2E only, **never** in `wrangler.jsonc` |
+| `BETTER_AUTH_SECRET` | secret (`openssl rand -base64 32`) | Worker secret (keep it stable: changing it signs everyone out); `.dev.vars` locally |
+| `PUBLIC_BASE_URL`, `BETTER_AUTH_URL` | var | `wrangler.jsonc`, with `<your-subdomain>` filled in from `cleared.config.json` at deploy time |
+| Workers subdomain, D1 database ID | deployment config (not secret, but personal) | Git-ignored `cleared.config.json` (`workersSubdomain`, `d1DatabaseId`; or `WORKERS_SUBDOMAIN`, `D1_DATABASE_ID` environment variables) |
+| `ENVIRONMENT` | var | `wrangler.jsonc` (`production`); `.dev.vars` and the test harnesses override it |
+| `ENABLE_SPIKES` | secret (temporary) | Set to `1` only while measuring the Phase 0 spikes on the deployment (`npm run remote -- secret put ENABLE_SPIKES`), then deleted; never in `wrangler.jsonc` |
 | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | shell environment | Only for deploys from a machine without a browser (`wrangler login` otherwise); never in a file |
 
 **OpenNext can embed values from `.env.local` into the bundle.** Keep secrets in `.dev.vars` and Worker secrets only, never in `.env*`.
@@ -871,10 +802,11 @@ Step-by-step: [`setup-and-deploy.md`](./setup-and-deploy.md).
 | §10.1 Frontend + backend | React + Vite SPA, Node + Express | **Next.js 16** (Server Components, server actions, route handlers) via **OpenNext** | One project for front and back end; proven on Workers Free |
 | §10.1 Database | Replit PostgreSQL + Drizzle | **D1 (SQLite) + Drizzle** | Same ORM; types adapted (§12.1) |
 | §10.3 Concurrency | `SELECT … FOR UPDATE` | **Atomic `db.batch()` + machine write tokens + guarded inserts**; partial unique index kept | D1 has no row locks (§12.2) |
-| §10.1 Auth | Replit-managed Clerk | **Better Auth, email + password** with verification and reset emails; `members.clerk_user_id` → `members.auth_user_id` | Clerk production needs a paid domain |
+| §10.1 Auth | Replit-managed Clerk | **Better Auth, email + password**; `members.clerk_user_id` → `members.auth_user_id` | Clerk production needs a paid domain |
 | §10.4 API | REST endpoints | **Server actions** for mutations, **Server Components** for reads, **GET route handlers** for polling | Next.js conventions |
 | §10.1 QR | Server-side SVG | **Browser-side SVG** (`qrcode`) | Saves Worker CPU |
-| §10.1 Email (P1) | Resend | **Brevo** (used in P0 for verification/reset) | Resend needs a domain |
+| §10.1 Email (P1) | Resend | **None**: Cleared sends no email (§7) | No free email sender without a domain or an organization postal address |
+| FR-01 | Sign-in "with email with verification, or Google" | **Email + password without verification**; no self-service password reset (admin script, §6.6) | Same: no free email sender |
 | §10.2 Cold starts | Reserved VM fallback | Workers isolates start fast; T12 still measured; no paid fallback | — |
 | §10.2 Region | Replit region | D1 hint `wnam`, likely U.S. | Disclose |
 | §11.1 Secrets | Replit Secrets | Worker secrets + `.dev.vars` | — |
@@ -906,12 +838,5 @@ Step-by-step: [`setup-and-deploy.md`](./setup-and-deploy.md).
 **Auth**
 - [Better Auth issue #969](https://github.com/better-auth/better-auth/issues/969) and [#8860](https://github.com/better-auth/better-auth/issues/8860): password hashing vs Workers CPU
 - [Clerk environments](https://clerk.com/docs/guides/development/managing-environments) and [dev-instance limits](https://clerk.com/changelog/2024-08-02-dev-notice)
-
-**Email**
-- [Brevo transactional email API](https://www.brevo.com/features/email-api/) and [free plan](https://www.brevo.com/free-smtp-server/)
-- [freeCodeCamp: Brevo single-sender verification](https://www.freecodecamp.org/news/how-to-bypass-cloud-smtp-restrictions-using-brevo-and-http-apis/)
-- [Brevo: limits of the Free plan](https://help.brevo.com/hc/en-us/articles/208580669-FAQs-What-are-the-limits-of-the-Free-plan) and [API rate limits](https://www.brevo.com/blog/api-rate-limiting/)
-- [Brevo: domain authentication and free-mail sender rewriting](https://help.brevo.com/hc/en-us/articles/12163873383186-Authenticate-your-domain-with-Brevo-Brevo-code-DKIM-DMARC)
-
 
 > Free tiers change. **Before Phase 0 and before any pilot, re-open these links and update §3 and §13** if anything changed.

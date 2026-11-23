@@ -1,9 +1,15 @@
 import AxeBuilder from "@axe-core/playwright";
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
+import { ADMIN_STATE } from "./accounts";
 
-const MEMBER_PAGES = ["/machines", "/me/certifications", "/help", "/m/example-token"];
-const OTHER_PAGES = ["/console", "/console/faults", "/sign-in", "/sign-up", "/setup", "/join/example-token"];
+// Signed-in pages (viewed as the admin that auth.spec.ts created).
+const MEMBER_PAGES = ["/machines", "/me/certifications", "/me/account", "/m/example-token"];
+const CONSOLE_PAGES = ["/console", "/console/faults", "/console/members", "/console/settings"];
+// Pages anyone can open.
+const PUBLIC_PAGES = ["/help", "/sign-in", "/sign-up"];
+// Signed-in areas: proxy.ts sends signed-out visitors to sign-in.
+const PROTECTED_PATHS = ["/machines", "/m/example-token", "/me/account", "/console", "/console/members", "/setup", "/join/example-token"];
 const WIDTHS = [320, 375];
 
 async function expectNoHorizontalScroll(page: Page) {
@@ -30,21 +36,21 @@ test("health route reports ok, the E2E environment and this checkout's version",
   });
 });
 
-test("root redirects temporarily (307) to the machine list", async ({ page, request }) => {
+test("root redirects temporarily (307) to the machine list, which asks a signed-out visitor to sign in", async ({ page, request }) => {
   const res = await request.get("/", { maxRedirects: 0 });
   expect(res.status()).toBe(307);
   expect(new URL(res.headers()["location"], "http://x").pathname).toBe("/machines");
   await page.goto("/");
-  await expect(page).toHaveURL(/\/machines$/);
+  await expect(page).toHaveURL(/\/sign-in\?next=%2Fmachines$/);
 });
 
-test("spike API routes are 404 outside development and staging", async ({ request }) => {
+test("spike API routes are 404 outside development (no ENABLE_SPIKES)", async ({ request }) => {
   for (const path of ["/api/spike/hash", "/api/spike/rate-limit"]) {
     expect((await request.get(path)).status(), path).toBe(404);
   }
 });
 
-test("spike pages render the not-found page outside development and staging", async ({ page }) => {
+test("spike pages render the not-found page outside development (no ENABLE_SPIKES)", async ({ page }) => {
   for (const path of ["/spike/pass", "/spike/board"]) {
     await page.goto(path);
     await expect(page.getByRole("heading", { name: "Page not found" }), path).toBeVisible();
@@ -52,15 +58,35 @@ test("spike pages render the not-found page outside development and staging", as
   }
 });
 
-// P0-72: the dev outbox route arrives in Phase 1. Then: 404 unless NODE_ENV is
-// development AND ENABLE_DEV_OUTBOX=1 (route test for all four combinations).
-test.fixme("/api/dev/outbox is 404 unless next dev and ENABLE_DEV_OUTBOX=1", async () => {});
+test.describe("signed out", () => {
+  for (const path of PROTECTED_PATHS) {
+    test(`${path} redirects to sign-in with next`, async ({ request }) => {
+      const res = await request.get(path, { maxRedirects: 0 });
+      expect(res.status()).toBe(307);
+      const location = new URL(res.headers()["location"], "http://x");
+      expect(location.pathname).toBe("/sign-in");
+      expect(location.searchParams.get("next")).toBe(path);
+    });
+  }
+
+  for (const width of WIDTHS) {
+    for (const path of PUBLIC_PAGES) {
+      test(`${path} at ${width} px renders without horizontal scroll and passes axe`, async ({ page }) => {
+        await page.setViewportSize({ width, height: 740 });
+        await page.goto(path);
+        await expect(page.locator("h1")).toBeVisible();
+        await expectNoHorizontalScroll(page);
+        await expectAxeClean(page);
+      });
+    }
+  }
+});
 
 for (const width of WIDTHS) {
   test.describe(`at ${width} px`, () => {
-    test.use({ viewport: { width, height: 740 } });
+    test.use({ viewport: { width, height: 740 }, storageState: ADMIN_STATE });
 
-    for (const path of [...MEMBER_PAGES, ...OTHER_PAGES]) {
+    for (const path of [...MEMBER_PAGES, ...CONSOLE_PAGES]) {
       test(`${path} renders without horizontal scroll and passes axe`, async ({ page }) => {
         await page.goto(path);
         await expect(page.locator("h1")).toBeVisible();
@@ -110,7 +136,7 @@ for (const width of WIDTHS) {
 }
 
 test.describe("at 1280 px", () => {
-  test.use({ viewport: { width: 1280, height: 800 } });
+  test.use({ viewport: { width: 1280, height: 800 }, storageState: ADMIN_STATE });
 
   test("the console sidebar marks the current section and passes axe", async ({ page }) => {
     await page.goto("/console/faults");

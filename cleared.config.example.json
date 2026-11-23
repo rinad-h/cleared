@@ -1,8 +1,5 @@
 {
   "$comment": "Copy to cleared.config.json (git-ignored) and fill in your own values. Not secrets, but personal: never commit them. See docs/setup-and-deploy.md §7.",
   "workersSubdomain": "<your-subdomain>",
-  "d1": {
-    "production": "<prod-database-id>",
-    "staging": "<staging-database-id>"
-  }
+  "d1DatabaseId": "<database-id>"
 }

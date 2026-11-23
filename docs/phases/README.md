@@ -15,8 +15,8 @@
 
 | # | Phase | Delivers | PRD FRs | PRD tests | Est. effort* |
 |---|---|---|---|---|---|
-| 0 | [Foundation & platform](./phase-0-foundation.md) | Next.js + OpenNext scaffold, D1 (staging + prod), local check + deploy scripts, service-test and E2E harness, CPU spikes (password hashing, server rendering), health route on the final `workers.dev` URL | — | — | 2–3 days |
-| 1 | [Identity, setup & access control](./phase-1-identity-and-access.md) | Better Auth (email + password, verification, password reset), `members`, `settings`, first-run setup, join link, roles, suspension, actor/permission layer, app shell | FR-01, FR-02, FR-03 | T10 (part) | 4–5 days |
+| 0 | [Foundation & platform](./phase-0-foundation.md) | Next.js + OpenNext scaffold, D1 (one deployment), local check + deploy scripts, service-test and E2E harness, CPU spikes (password hashing, server rendering), health route on the final `workers.dev` URL | — | — | 2–3 days |
+| 1 | [Identity, setup & access control](./phase-1-identity-and-access.md) | Better Auth (email + password, no email sending), `members`, `settings`, first-run setup, join link, roles, suspension, actor/permission layer, app shell | FR-01, FR-02, FR-03 | T10 (part) | 4–5 days |
 | 2 | [Catalog & QR labels](./phase-2-catalog-and-labels.md) | Rooms, certifications, machines (basics + admin-only fields), retire, QR tokens, printable label sheet, `/m/:token` shell | FR-04, FR-05, FR-06 | T10 (part), T01 (partial) | 3–4 days |
 | 3 | [Certifications & the machine pass](./phase-3-certifications-and-pass.md) | Pass engine, pass page, sign-off, revocation, expiry, Members pages, My certifications | FR-07, FR-08 (grant side), FR-09, FR-18 | T02, T03 | 4–5 days |
 | 4 | [Sessions & member status board](./phase-4-sessions-and-status-board.md) | Start/extend/end sessions, lazy expiry, write-token concurrency, revocation/suspension ending sessions, status board with ETag polling | FR-08 (session side), FR-10, FR-11 | T04 (part), T05, T06 | 4–5 days |
@@ -64,7 +64,7 @@ The ★ tasks never take shortcuts that later tasks have to undo. For example, t
 
 ### Demo checkpoints
 
-Each phase ends with part of the PRD 5.1 demo working on **staging**:
+Each phase ends with part of the PRD 5.1 demo working on **the deployed app** (there is one deployment and no staging copy; see `setup-and-deploy.md` §10):
 
 | After phase | Demo steps working |
 |---|---|
@@ -80,14 +80,14 @@ Each phase ends with part of the PRD 5.1 demo working on **staging**:
 
 These turn PRD Section 14's "Build rule" and "Instruction to Replit Agent" into rules for this stack.
 
-1. **One phase at a time.** Don't start phase *N+1* until phase *N*'s exit criteria are met: `npm run check` and `npm run test:e2e` green, manual checks done on **staging**, and the phase deployed to **production** (from Phase 2 on).
+1. **One phase at a time.** Don't start phase *N+1* until phase *N*'s exit criteria are met: `npm run check` and `npm run test:e2e` green, the phase **deployed**, and its manual checks done on the deployed app.
 2. **The PRD wins on behaviour; `technologies.md` wins on platform.** If they conflict (for example Clerk vs Better Auth), follow `technologies.md` and note the deviation in the phase doc's *Decisions* section.
 3. **Never build anything in PRD Section 5.3.** If a task seems to need it, stop and write it down as an open question.
 4. **No websockets, background workers, cron triggers, queues or paid services.** Polling (30 s) and lazy evaluation only.
 5. **Server decides, client displays.** Pass status, permissions, "active session", due dates: all computed on the server with server UTC time. Hiding a button is never security.
 6. **Every mutation is one atomic `db.batch()`**, with the patterns in `technologies.md` §12 (machine write token, guarded inserts, `data_version` bump).
-7. **Additive migrations only** once production has data (from the end of Phase 2).
-8. **No auth bypass exists in the code.** Services take an `actor` argument, so tests don't need to fake sign-in; E2E signs up real accounts. The only dev-only route (the email outbox) is guarded and checked by `npm run check` (Phase 0).
+7. **Additive migrations only** once the deployment has data worth keeping (from the end of Phase 2, when the demo makerspace is set up on it). Before that, the deployed app is the test bed; after it, test locally first (`npm run check`, `npm run test:e2e`, `npm run preview`), and D1 Time Travel plus `wrangler rollback` are the undo.
+8. **No auth bypass exists in the code.** Services take an `actor` argument, so tests don't need to fake sign-in; E2E signs up real accounts. The only dev-only switch (`ENABLE_SPIKES`, for the Phase 0 spikes) is guarded and checked by `npm run check` (Phase 0).
 9. **Seed data is clearly fake** ("Demo Makerspace", "Demo Student 1") and never presented as pilot results.
 10. **Privacy:** member-facing responses never include who is using a machine, fault descriptions, or reporter names (PRD 7.1). Logs never include emails, codes, tokens or free text.
 
@@ -116,7 +116,7 @@ Every phase uses these conventions. Phase 0 and Phase 1 build them; later phases
 |---|---|---|
 | `health` (none; `/api/health` reads `SELECT 1`) | 0 | — |
 | Better Auth: `user`, `session`, `account`, `verification`, `rate_limit` | 1 | Generated from Better Auth's schema (`rate_limit` because its limiter uses database storage) |
-| `settings`, `members`, `email_send_log` | 1 | `email_send_log` enforces the Brevo daily cap |
+| `settings`, `members` | 1 | — |
 | `rooms`, `certifications`, `machines`, `machine_requirements` | 2 | `machines.write_token` from the start |
 | `grants` | 3 | — |
 | `machine_sessions` (the PRD's `sessions`) | 4 | Partial unique index. Renamed so it can't be confused with Better Auth's `session` table |
@@ -135,7 +135,7 @@ Cleared has no REST API of its own. Each phase lists its **operations** in a tab
 | **Page data** | An async function called by a Server Component | `src/data/*.ts` → `src/server/services/*` read functions | Everything a page shows on first render |
 | **Server action** | A `"use server"` function called from a `<form action>` or a client handler | `src/actions/*.ts` | Every mutation |
 | **Route handler** | `GET` only, returns JSON | `src/app/api/*/route.ts` | Polling (status board, console home) and the deploy health check |
-| **Better Auth** | Better Auth's own endpoints | `src/app/api/auth/[...all]/route.ts` | Sign-up, sign-in, verification, reset, sign-out |
+| **Better Auth** | Better Auth's own endpoints | `src/app/api/auth/[...all]/route.ts` | Sign-up, sign-in, change password, sign-out |
 
 | Convention | Rule |
 |---|---|
@@ -178,7 +178,7 @@ Cleared has no REST API of its own. Each phase lists its **operations** in a tab
 | Clock | Services take `now`; tests pass it explicitly (`T0`, `T0 + 15 * MIN`, …) |
 | Builders | `seed.machine({ requires: [certA], supervised: true })`, `seed.grant(member, cert, { expiresAt })`, … |
 | Concurrency | Fire overlapping service calls with `Promise.all`; assert on the final rows |
-| E2E | Playwright against `next dev` on a throwaway D1 (`tests/e2e/run.sh`); signs up real accounts; reads verification links from the dev outbox |
+| E2E | Playwright against `next dev` on a throwaway D1 (`tests/e2e/run.sh`); signs up real accounts (no email step) |
 | Coverage | `src/server/domain/*` ≥ 90% lines; every service covered by a T-spec |
 
 ---
@@ -189,12 +189,12 @@ A phase is done when **all** of the following are true:
 
 - [ ] All tasks in the phase doc are checked off (or explicitly moved to a later phase with a reason).
 - [ ] `npm run check` and `npm run test:e2e` pass on the commit being deployed (there is no CI server).
-- [ ] New migrations reviewed by hand, applied to staging, and (from Phase 2 on) to production.
-- [ ] The phase's manual checks pass on **staging** on a physical phone.
-- [ ] The phase's demo checkpoint works on staging.
+- [ ] New migrations reviewed by hand, applied locally, then to the deployment.
+- [ ] The phase's manual checks pass on **the deployed app** on a physical phone.
+- [ ] The phase's demo checkpoint works on the deployed app.
 - [ ] No new free-tier risk was introduced without a note in `technologies.md` §13.
 - [ ] The phase doc's *Decisions* and *Open questions* sections are updated with anything learned.
-- [ ] Deployed to production (Phases 2+).
+- [ ] Deployed.
 
 ---
 
@@ -224,9 +224,9 @@ A phase is done when **all** of the following are true:
 | PRD 5.4 limits / help page | 7 (help-page stub in 1) |
 | PRD 8 design rules | All; audited in 7 |
 | PRD 9 permissions | 1 (guard + matrix), each phase adds routes, 6 (full sweep) |
-| PRD 11.1 security & privacy | 0 (no auth bypass, dev-outbox guard), 1 (auth), 7 (privacy notice, retention) |
+| PRD 11.1 security & privacy | 0 (no auth bypass, dev-only switch guard), 1 (auth), 7 (privacy notice, retention) |
 | PRD 11.2 quality targets | 7 |
-| T01 | 2 (scan opens pass), 5 (full demo), 7 (re-run on production) |
+| T01 | 2 (scan opens pass), 5 (full demo), 7 (final re-run on the deployed app) |
 | T02, T03 | 3 |
 | T04 | 4 (sessions end), 6 (console flag) |
 | T05, T06 | 4 |

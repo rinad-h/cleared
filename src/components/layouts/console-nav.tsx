@@ -21,36 +21,42 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 
-const ITEMS: { href: string; label: string; icon: LucideIcon }[] = [
+const ITEMS: { href: string; label: string; icon: LucideIcon; adminOnly?: boolean }[] = [
   { href: "/console", label: "Home", icon: House },
   { href: "/console/faults", label: "Faults", icon: TriangleAlert },
   { href: "/console/checkups", label: "Checkups", icon: ClipboardCheck },
   { href: "/console/machines", label: "Machines", icon: Wrench },
   { href: "/console/rooms", label: "Rooms", icon: DoorOpen },
   { href: "/console/members", label: "Members", icon: Users },
-  { href: "/console/certifications", label: "Certifications", icon: Award },
+  { href: "/console/certifications", label: "Certifications", icon: Award, adminOnly: true },
   { href: "/console/labels", label: "Labels", icon: QrCode },
-  { href: "/console/settings", label: "Settings", icon: Settings },
+  { href: "/console/settings", label: "Settings", icon: Settings, adminOnly: true },
 ];
 
+type NavProps = {
+  /** Admin-only sections are listed for admins only (hiding is not security; services check). */
+  isAdmin?: boolean;
+  onNavigate?: () => void;
+};
+
 /** The current-item highlight reads the URL, so it streams in inside <Suspense> (dynamic routes). */
-function NavList({ onNavigate }: { onNavigate?: () => void }) {
+function NavList(props: NavProps) {
   return (
-    <Suspense fallback={<NavItems pathname={null} onNavigate={onNavigate} />}>
-      <NavListWithPathname onNavigate={onNavigate} />
+    <Suspense fallback={<NavItems pathname={null} {...props} />}>
+      <NavListWithPathname {...props} />
     </Suspense>
   );
 }
 
-function NavListWithPathname({ onNavigate }: { onNavigate?: () => void }) {
-  return <NavItems pathname={usePathname()} onNavigate={onNavigate} />;
+function NavListWithPathname(props: NavProps) {
+  return <NavItems pathname={usePathname()} {...props} />;
 }
 
-function NavItems({ pathname, onNavigate }: { pathname: string | null; onNavigate?: () => void }) {
+function NavItems({ pathname, isAdmin = false, onNavigate }: NavProps & { pathname: string | null }) {
   return (
     <nav aria-label="Staff console" className="flex flex-col gap-1 p-3">
       <ul className="flex flex-col gap-1">
-        {ITEMS.map(({ href, label, icon: Icon }) => {
+        {ITEMS.filter((item) => isAdmin || !item.adminOnly).map(({ href, label, icon: Icon }) => {
           const active =
             pathname !== null &&
             (href === "/console" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`));
@@ -88,12 +94,12 @@ function NavItems({ pathname, onNavigate }: { pathname: string | null; onNavigat
 }
 
 /** Sidebar navigation (desktop). */
-export function ConsoleSidebar() {
-  return <NavList />;
+export function ConsoleSidebar({ isAdmin }: { isAdmin?: boolean }) {
+  return <NavList isAdmin={isAdmin} />;
 }
 
 /** Drawer navigation (phone). */
-export function ConsoleDrawer() {
+export function ConsoleDrawer({ isAdmin }: { isAdmin?: boolean }) {
   const [open, setOpen] = useState(false);
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -104,7 +110,7 @@ export function ConsoleDrawer() {
       </SheetTrigger>
       <SheetContent side="left" className="w-64 bg-sidebar p-0" aria-describedby={undefined}>
         <SheetTitle className="px-6 pt-5 text-base">Staff console</SheetTitle>
-        <NavList onNavigate={() => setOpen(false)} />
+        <NavList isAdmin={isAdmin} onNavigate={() => setOpen(false)} />
       </SheetContent>
     </Sheet>
   );

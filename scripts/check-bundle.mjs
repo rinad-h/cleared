@@ -8,7 +8,7 @@
 //
 // P0-70  No secrets in the build output (client assets and the Worker).
 // P0-71  No .env* files tracked or present (OpenNext embeds .env* from disk into the Worker).
-// P0-72  ENABLE_DEV_OUTBOX never in wrangler.jsonc; the dev-only env override never in the Worker.
+// P0-72  ENABLE_SPIKES never in wrangler.jsonc; the dev-only env override never in the Worker.
 // P0-73  The repo stays generic: placeholders only in committed config, no personal
 //        values or database dumps committed.
 
@@ -68,7 +68,7 @@ try {
 }
 
 if (wranglerConfig) {
-  for (const placeholder of ["<your-subdomain>", "<prod-database-id>", "<staging-database-id>"]) {
+  for (const placeholder of ["<your-subdomain>", "<database-id>"]) {
     if (![...stringValues(wranglerConfig)].some(([, v]) => v.includes(placeholder))) {
       fail(`wrangler.jsonc: placeholder ${placeholder} is missing; put your values in cleared.config.json instead`);
     }
@@ -83,14 +83,14 @@ if (wranglerConfig) {
   if (/"account_id"\s*:/.test(keys)) {
     fail("wrangler.jsonc: account_id must not be committed; export CLOUDFLARE_ACCOUNT_ID in your shell instead");
   }
-  // P0-72: the dev outbox can never be switched on by deployed config.
-  if (keys.includes("ENABLE_DEV_OUTBOX")) {
-    fail("wrangler.jsonc: ENABLE_DEV_OUTBOX must only be set in .dev.vars / the E2E harness");
+  // P0-72: spike routes are only switched on by a temporary Worker secret, never by committed config.
+  if (keys.includes("ENABLE_SPIKES")) {
+    fail("wrangler.jsonc: ENABLE_SPIKES must only be a temporary Worker secret (npm run remote -- secret put ENABLE_SPIKES)");
   }
 }
 
 const example = JSON.parse(readFileSync(join(root, "cleared.config.example.json"), "utf8"));
-const exampleValues = [example.workersSubdomain, example.d1?.production, example.d1?.staging];
+const exampleValues = [example.workersSubdomain, example.d1DatabaseId];
 if (!exampleValues.every((v) => typeof v === "string" && PLACEHOLDER.test(v))) {
   fail("cleared.config.example.json: must keep placeholder values only; your values go in cleared.config.json");
 }
@@ -104,9 +104,7 @@ if (existsSync(join(root, "cleared.config.json"))) {
     if (typeof own.workersSubdomain === "string" && !PLACEHOLDER.test(own.workersSubdomain)) {
       personal.push(`.${own.workersSubdomain}.workers.dev`);
     }
-    for (const id of [own.d1?.production, own.d1?.staging]) {
-      if (typeof id === "string" && UUID_OR_HEX32.test(id)) personal.push(id);
-    }
+    if (typeof own.d1DatabaseId === "string" && UUID_OR_HEX32.test(own.d1DatabaseId)) personal.push(own.d1DatabaseId);
   } catch {
     // render-wrangler.mjs reports a malformed file when it's used.
   }
@@ -126,10 +124,7 @@ for (const value of personal) {
 // -------------------------------------------------------------- build checks
 
 const SECRET_PATTERNS = [
-  [/xkeysib-[A-Za-z0-9-]{10,}/, "Brevo API key"],
-  [/xsmtpsib-[A-Za-z0-9-]{10,}/, "Brevo SMTP key"],
   [/BETTER_AUTH_SECRET\s*[=:]\s*["']?[A-Za-z0-9+/=]{16,}/, "BETTER_AUTH_SECRET value"],
-  [/BREVO_API_KEY\s*[=:]\s*["']?\S{10,}/, "BREVO_API_KEY value"],
   [/-----BEGIN [A-Z ]*PRIVATE KEY-----/, "private key"],
   [/\bgh[pousr]_[A-Za-z0-9]{36,}\b/, "GitHub token"],
   [/CLOUDFLARE_API_TOKEN\s*[=:]\s*["']?[A-Za-z0-9_-]{30,}/, "Cloudflare API token"],
@@ -159,7 +154,7 @@ function knownSecretValues() {
       if (match && isSecretKey(match[1]) && match[2].length >= 12 && !isPlaceholder(match[2])) values.add(match[2]);
     }
   }
-  for (const key of ["BETTER_AUTH_SECRET", "BREVO_API_KEY", "CLOUDFLARE_API_TOKEN"]) {
+  for (const key of ["BETTER_AUTH_SECRET", "CLOUDFLARE_API_TOKEN"]) {
     const value = process.env[key];
     if (value && value.length >= 12 && !isPlaceholder(value)) values.add(value);
   }
@@ -186,7 +181,6 @@ if (!repoOnly) {
         for (const [pattern, label] of SECRET_PATTERNS) {
           if (pattern.test(content)) fail(`${rel}: looks like a ${label}`);
         }
-        if (content.includes("ENABLE_DEV_OUTBOX")) fail(`${rel}: dev-outbox code reached the client bundle`);
       }
       if (content.includes(DEV_OVERRIDE_MARKER)) {
         fail(`${rel}: the dev-only env override (src/lib/env.ts) reached the build; it must be removed as dead code`);

@@ -19,7 +19,7 @@
 3. **Console home** (`/console`): open-fault and checkup counts, out-of-service machines, **active sessions (labelled self-reported)**, and **sessions whose member is no longer authorized** (for example a certification that expired mid-session). Polls every 30 s through `GET /api/console` with an ETag.
 4. **Rate limits** (FR-19): session starts, fault reports and joins limited per member/user (20/min) → `RATE_LIMITED`.
 5. **T10 full sweep**: every row of PRD Section 9 is tested against the services for every actor kind, and every server action is proven to go through the shared actor helper.
-6. **T11**: persistence across refresh and redeploy confirmed on production.
+6. **T11**: persistence across refresh and redeploy confirmed on the deployed app.
 
 ## 2. Scope
 
@@ -135,7 +135,7 @@ ETag = W/"c.<data_version>.<memberId>.<role>.<validUntil>"
 | Start session | `start:<memberId>` | 20 / 60 s | `services/sessions.startSession` |
 | Report fault | `fault:<memberId>` | 20 / 60 s | `services/faults.reportFault` |
 | Join | `join:<authUserId>` | 20 / 60 s | `services/membership.join` |
-| Sign-in / sign-up / reset / verification email | Better Auth limiter, database storage | Phase 1 rules (5/min sign-in, 3/min sign-up, 3 per 5 min for emails) | Phase 1, unchanged |
+| Sign-in / sign-up | Better Auth limiter, database storage | Phase 1 rules (5/min sign-in, 3/min sign-up) | Phase 1, unchanged |
 
 - **Binding path:** a `RateLimiter` interface with `limit(key): Promise<boolean>`. The production implementation calls `getCloudflareContext().env.RL_ACTIONS.limit({ key })`. Over the limit → `ServiceError("RATE_LIMITED")` → the action returns `{ ok: false, code: "RATE_LIMITED" }` and the UI shows "Try again in a minute".
 - **D1 fallback path:**
@@ -222,7 +222,7 @@ Console nav final order: **Home** · Faults (count) · Checkups (overdue count) 
 
 | ID | Task |
 |---|---|
-| P6-01 | Add `checkups` (and `rate_limits` if needed) to `src/db/schema.ts`; `npm run db:generate`; apply local → staging → production |
+| P6-01 | Add `checkups` (and `rate_limits` if needed) to `src/db/schema.ts`; `npm run db:generate`; apply locally, then to the deployment |
 | P6-02 | `src/server/domain/checkups.ts`: `nextDue`, `checkupState`, `nextBoundary` (pure, unit-tested) |
 | P6-03 | `services/checkups` (machine-scoped CRUD + cross-machine lists) + `src/actions/checkups.ts` + `src/data/checkups.ts` |
 | P6-04 | `logServiceRecord`: `checkupId` validation and guarded insert |
@@ -308,10 +308,10 @@ All service tests call services directly with actors from the `actors` helper an
 
 | ID | Check |
 |---|---|
-| P6-40 | On staging, submit 25 fault reports in a minute from one account (a Playwright script against the staging site) → `RATE_LIMITED` after about 20. Confirms the real binding |
+| P6-40 | On the deployed app, submit 25 fault reports in a minute from one account (a Playwright script against the deployed site) → `RATE_LIMITED` after about 20. Confirms the real binding |
 | P6-41 | **Supervisor check** (PRD 4.2): 5 staff testers each find "who has a recorded session on the laser" and "which machines are out of service" from the console home. Target ≤ 20 s for 4 of 5 |
 | P6-42 | Journey H on a phone: create a checkup with interval 1 day, log a back-dated checkup record, see it overdue the next day (or create it with a 1-day interval and wait), log it, see it leave the list |
-| P6-43 ★ **T11** | On **production** with production accounts: create data → refresh → still there; **deploy a new version** (`npm run deploy` with any trivial change) → data still there; sign out/in → still there. Record the result |
+| P6-43 ★ **T11** | On **the deployed app** with real accounts: create data → refresh → still there; **deploy a new version** (`npm run deploy` with any trivial change) → data still there; sign out/in → still there. Record the result |
 | P6-44 | Leave the console open in a background tab for 10 min → no `/api/console` requests in `wrangler tail` while hidden |
 
 ---
@@ -319,9 +319,9 @@ All service tests call services directly with actors from the `actors` helper an
 ## 8. Exit criteria
 
 - [ ] T09, T10 (full), T04 (complete), console route, action-wrapper and rate-limit tests green.
-- [ ] **PRD M1 and M2 exit criteria met:** T02–T11 pass (T01 from Phase 5, T11 manual on production).
+- [ ] **PRD M1 and M2 exit criteria met:** T02–T11 pass (T01 from Phase 5, T11 manual on the deployed app).
 - [ ] Console home supervisor check measured (≤ 20 s, 4 of 5).
-- [ ] Migration `0006` applied to production.
+- [ ] Migration `0006` applied to the deployment.
 
 ---
 

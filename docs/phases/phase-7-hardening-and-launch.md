@@ -19,8 +19,8 @@
 3. **Performance:** pass interactive in ≤ 2 s warm on a mid-range phone (PRD 11.2); scan-to-pass measured warm and after idle (**T12**).
 4. **CPU safety:** every server-rendered page and every Better Auth flow measured against the 10 ms free-plan limit from Workers Logs `cpuTime`.
 5. **Free-tier safety:** every hot query index-checked, link prefetching audited, real rows-read numbers recorded, an optional $0 usage alarm, and quota-exhaustion behaviour tested.
-6. **Security and privacy review** completed (no auth bypass, dev outbox closed in production, password handling); retention rule and data-residency answer written.
-7. **Demo data** that is unmistakably fake, loadable on staging/production and removable.
+6. **Security and privacy review** completed (no auth bypass, dev-only switches off in production, password handling); retention rule and data-residency answer written.
+7. **Demo data** that is unmistakably fake, loadable locally and on the deployment, and removable.
 8. **Runbook** for deploys, rollbacks, restores, backups, lock-outs, password resets and quota incidents.
 9. **Definition of Done** (PRD 15) ticked with evidence; T01–T12 results recorded.
 
@@ -39,7 +39,7 @@
 | ID | Task | Pass condition |
 |---|---|---|
 | P7-01 | **Automated:** `@axe-core/playwright` on every route (member, auth and console) in light mode, at 320 px and 1280 px | 0 serious/critical violations |
-| P7-02 | **Keyboard-only** walk-through: sign up → verify → sign in → board → pass → start/end session → report problem; console: sign off, log service, set out of service | Every control reachable; visible focus ring; logical order; dialogs trap and restore focus; Esc closes |
+| P7-02 | **Keyboard-only** walk-through: sign up → sign in → board → pass → start/end session → report problem; console: sign off, log service, set out of service | Every control reachable; visible focus ring; logical order; dialogs trap and restore focus; Esc closes |
 | P7-03 | **Screen readers:** VoiceOver (iOS Safari) and TalkBack (Android Chrome) on the pass, the board and the sign-in/sign-up forms | The pass status is announced as words; tiles read "name, state, estimate, cleared/not cleared"; form errors announced (`aria-live`) |
 | P7-04 | **Colour:** check every status token pair (text and icon) in `globals.css` | ≥ 4.5:1 text, ≥ 3:1 icons/borders; status never by colour alone (colour + icon + word) |
 | P7-05 | **Zoom and reflow:** 200% browser zoom and the largest OS text size | No clipped text; no horizontal scroll at 320 px |
@@ -54,7 +54,7 @@
 |---|---|
 | P7-10 | **Help page** (`src/app/(member)/help/page.tsx`, statically rendered so it's served without Worker CPU), in plain language. Sections: *What Cleared is* (a decision-support and record-keeping tool); *What it doesn't do*: every PRD 5.4 bullet (no presence check; sessions and "in use" are self-reported estimates; supervision isn't verified; it can't stop a machine; records are only as accurate as staff keep them; screenshots and shared phones are mitigated, not prevented; supervisors remain responsible; emergencies follow institutional procedures); *How to use it* (scan → pass → start/done; report a problem); *What the colours mean* (with icons); *Forgot your password?*; *Who to contact* (makerspace staff, not the developer) |
 | P7-11 | **Terms of use** page (static): the same limits as the help page plus acceptable use (don't share accounts or passwords, report problems honestly, don't misuse labels) and "provided as is for a classroom MVP / pilot" |
-| P7-12 | **Privacy notice** page (static): what's collected (name, email, **a hashed password, never the password itself**, sign-in sessions, certifications, machine sessions, fault reports, service records; **no** photos or student ID numbers, PRD 11.1); why; **who processes it** (Cloudflare: hosting and database, likely U.S. data centres; Brevo: your email address when we send a verification or password-reset email); retention (§3.5); how to ask for access or deletion (contact staff); no tracking or analytics cookies (only the sign-in cookie) |
+| P7-12 | **Privacy notice** page (static): what's collected (name, email, **a hashed password, never the password itself**, sign-in sessions, certifications, machine sessions, fault reports, service records; **no** photos or student ID numbers, PRD 11.1); why; **who processes it** (Cloudflare: hosting and database, likely U.S. data centres; Cleared sends no email); retention (§3.5); how to ask for access or deletion (contact staff); no tracking or analytics cookies (only the sign-in cookie) |
 | P7-13 | Link Help, Terms and Privacy from: sign-in and sign-up pages ("By creating an account you agree…"), join page, pass page footer, console footer |
 | P7-14 | Wording review: every estimate says "est." or "expected"; every session list says "self-reported"; checkups say "advisory" |
 
@@ -77,10 +77,10 @@
 
 | ID | Task | Pass condition |
 |---|---|---|
-| P7-30 | **Server-rendered pages:** on staging with demo data at 10 and 60 machines, load each hot page 20 times and read `cpuTime` from Workers Logs: pass (`/m/[token]`), board (`/machines`), console home (`/console`), machine detail (`/console/machines/[id]`), member detail, fault queue | p99 < 5 ms per page (half the 10 ms limit); investigate anything above |
+| P7-30 | **Server-rendered pages:** on the deployment (while it holds only demo data) with demo data at 10 and 60 machines, load each hot page 20 times and read `cpuTime` from Workers Logs: pass (`/m/[token]`), board (`/machines`), console home (`/console`), machine detail (`/console/machines/[id]`), member detail, fault queue | p99 < 5 ms per page (half the 10 ms limit); investigate anything above |
 | P7-31 | **Route handlers:** `/api/status-board` and `/api/console`, both 304 and 200 paths | 304 p99 < 2 ms; 200 p99 < 5 ms |
 | P7-32 | **Server actions:** start/end session, report fault, sign off, log service | p99 < 5 ms |
-| P7-33 | **Better Auth (spike S1 follow-up):** 50 sign-ups, 50 sign-ins, 10 password resets on staging; count **Error 1102** and record `cpuTime` | 0 failures. If any: apply the `technologies.md` §6.4 decision rule (native `node:crypto` scrypt → re-measure → Google + email codes fallback); never lower the scrypt cost, never pay |
+| P7-33 | **Better Auth (spike S1 follow-up):** 50 sign-ups, 50 sign-ins, 10 password changes on the deployment (before a pilot; delete the test users afterwards); count **Error 1102** and record `cpuTime` | Bursts can hit Error 1102 (P1-01). Pass: with the client retry (Phase 1 P1-12), no user-visible sign-up/sign-in failure at classroom pace. Otherwise apply `technologies.md` §6.4: Google sign-in fallback; never lower the scrypt cost, never pay |
 | P7-34 | Record all results in `technologies.md` §4.1/§6.5 | — |
 
 ### 3.5 Free-tier safety audit (`technologies.md` §13–14)
@@ -100,55 +100,54 @@
 | ID | Check |
 |---|---|
 | P7-50 | **No auth bypass:** search the codebase for any header- or env-based way to become a user (`X-Test`, `TEST_AUTH`, hard-coded IDs) → none. The action-wrapper sweep and T10 service sweep (Phase 6) are green |
-| P7-51 | **Dev outbox closed:** `curl -i https://cleared.<your-subdomain>.workers.dev/api/dev/outbox?email=x` → **404** on production and staging; `npm run check` (and every deploy) confirms the outbox code is behind the `NODE_ENV === "development"` + `ENABLE_DEV_OUTBOX` guard; `ENABLE_DEV_OUTBOX` isn't in `wrangler.jsonc` |
+| P7-51 | **Dev-only switches off:** the spike code is deleted (or `curl -i https://cleared.<your-subdomain>.workers.dev/api/spike/hash` → **404** and `npm run remote -- secret list` shows no `ENABLE_SPIKES`); `npm run check` confirms `ENABLE_SPIKES` isn't in `wrangler.jsonc` and `getEnv()`'s dev-only branch isn't in the Worker |
 | P7-52 | **CSRF:** server actions rely on Next.js's built-in origin check (`serverActions.allowedOrigins` unset); every route handler other than Better Auth's exports **GET only** (a unit test lists `src/app/api/**/route.ts` exports); cookies `HttpOnly`, `Secure`, `SameSite=Lax`. Test: a cross-origin POST to a server action is rejected |
-| P7-53 | **Passwords:** min 8 / max 128 enforced; sign-in errors are generic ("Email or password is incorrect"; no "no such user"); password reset tokens expire in 1 hour and sessions are revoked on reset; Better Auth's limiter blocks a 6th sign-in attempt within a minute (manual check on staging) |
-| P7-54 | **Optional breached-password check:** evaluate Better Auth's `haveIBeenPwned` plugin (free; sends only a 5-character hash prefix). It adds an outbound request and some CPU to sign-up/reset; adopt it only if P7-33 shows headroom. Record the decision |
-| P7-55 | **Unverified accounts:** document and test the cleanup query (unverified `user` rows older than 7 days with no `members` row): `DELETE FROM session WHERE user_id IN (…); DELETE FROM account WHERE user_id IN (…); DELETE FROM user WHERE email_verified = 0 AND created_at < :cutoff AND id NOT IN (SELECT auth_user_id FROM members)`. Manual, run from the runbook |
-| P7-56 | **Secrets:** none in the repo or the client bundle (search `.open-next/` output for the `BETTER_AUTH_SECRET` value, `xkeysib-`); **no secrets in `.env*` files**, since OpenNext can embed `.env.local` values in the bundle (`technologies.md` §16); `.dev.vars` git-ignored; rotation procedure in the runbook |
+| P7-53 | **Passwords:** min 8 / max 128 enforced; sign-in errors are generic ("Email or password is incorrect"; no "no such user"); changing a password revokes the other sessions; Better Auth's limiter blocks a 6th sign-in attempt within a minute (manual check on the deployment) |
+| P7-54 | **Optional breached-password check:** evaluate Better Auth's `haveIBeenPwned` plugin (free; sends only a 5-character hash prefix). It adds an outbound request and some CPU to sign-up and password change; adopt it only if P7-33 shows headroom. Record the decision |
+| P7-55 | **Accounts that never joined:** document and test the cleanup query (`user` rows older than 7 days with no `members` row, e.g. sign-ups with a mistyped or someone else's address): `DELETE FROM session WHERE user_id IN (…); DELETE FROM account WHERE user_id IN (…); DELETE FROM user WHERE created_at < :cutoff AND id NOT IN (SELECT auth_user_id FROM members)`. Manual, run from the runbook |
+| P7-56 | **Secrets:** none in the repo or the client bundle (search `.open-next/` output for the `BETTER_AUTH_SECRET` value); **no secrets in `.env*` files**, since OpenNext can embed `.env.local` values in the bundle (`technologies.md` §16); `.dev.vars` git-ignored; rotation procedure in the runbook |
 | P7-57 | **Headers:** check in devtools that `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin` and `frame-ancestors 'none'` (CSP via `next.config.ts` `headers()`) are present |
 | P7-58 | **Dependencies:** `npm audit --omit=dev`; update or replace anything high/critical; pin exact versions (Next, OpenNext, Better Auth, Drizzle, Wrangler) |
 | P7-59 | **Privacy of responses:** re-run the T06 privacy assertions against **production** `/api/status-board` responses with demo data; check the pass never shows other members' names, and that page HTML/RSC payloads for members don't include other members' data (inspect the RSC payload of `/machines`) |
 | P7-60 | **Logs:** search 3 days of Workers Logs for `@`, `password`, `token=` and free-text fields → none |
-| P7-61 | **Retention rule** (PRD 11.1): adopt "machine sessions kept 2 years; grants, faults and service records kept for the life of the makerspace (audit value); expired auth sessions and verification tokens purged". Implement as a **documented manual procedure** in the runbook (an `npm run remote -- d1 execute cleared-prod --remote --command "…"` SQL run once a term by the admin), not a background job |
-| P7-62 | **Data residency statement** for pilot conversations: "Data is stored in Cloudflare D1 with a western-North-America location hint; Cloudflare doesn't offer a Canadian jurisdiction for D1. Email addresses are processed by Brevo when verification or password-reset emails are sent." Add it to the privacy notice and the pilot checklist |
-| P7-63 | **Account security:** 2FA on Cloudflare, GitHub and Brevo; a Cloudflare API token, if one is used for headless deploys, is scoped (Phase 0) and only ever exported in the shell, never stored in a file (no CI/CD) |
+| P7-61 | **Retention rule** (PRD 11.1): adopt "machine sessions kept 2 years; grants, faults and service records kept for the life of the makerspace (audit value); expired auth sessions purged". Implement as a **documented manual procedure** in the runbook (an `npm run remote -- d1 execute cleared --remote --command "…"` SQL run once a term by the admin), not a background job |
+| P7-62 | **Data residency statement** for pilot conversations: "Data is stored in Cloudflare D1 with a western-North-America location hint; Cloudflare doesn't offer a Canadian jurisdiction for D1. Cleared sends no email, so no email provider sees your address." Add it to the privacy notice and the pilot checklist |
+| P7-63 | **Account security:** 2FA on Cloudflare and GitHub; a Cloudflare API token, if one is used for headless deploys, is scoped (Phase 0) and only ever exported in the shell, never stored in a file (no CI/CD) |
 
 ### 3.7 Demo data (PRD M3, 14)
 
 | ID | Task |
 |---|---|
 | P7-70 | `scripts/seed.ts` (run with `npm run db:seed`): "**Demo Makerspace**"; rooms *Laser Room*, *Wood Shop*, *3D Print Lab*, *Metal Shop*; certifications *Laser Cutter — Basic* (12 months), *Wood Shop — General* (12), *3D Printer — Intro* (none), *Lathe — Basic* (6); 10 machines including one supervised lathe and one out of service with a note; demo members **"Demo Student 1–5", "Demo Staff 1–2", "Demo Technician"** with `@example.com` emails; grants with a mix of valid/expiring/expired; a service history of 6 records (including one vendor repair and one correction); 3 checkups (one overdue) |
-| P7-71 | Seeded accounts get real Better Auth credential rows with passwords hashed **locally** by `hashPassword` from `better-auth/crypto` (no Worker CPU used), marked `email_verified = 1`, so you can sign in as any demo user. Demo passwords live in `docs/seed.md` and are **only** used on local and staging; on production, seeded demo members get no `account` row (they can't sign in) |
+| P7-71 | Seeded accounts get real Better Auth credential rows with passwords hashed **locally** by `hashPassword` from `better-auth/crypto` (no Worker CPU used) so you can sign in as any demo user. Demo passwords live in `docs/seed.md` and are **only** used locally; on the deployment, seeded demo members get no `account` row (they can't sign in) |
 | P7-72 | Every seeded name starts with **"Demo"**; the makerspace name contains "Demo"; a banner "Demo data. Not real makerspace records" appears when `settings.name` starts with "Demo" |
-| P7-73 | `npm run db:seed -- --reset` for local and `scripts/reset-staging.sh` for staging: export a backup, clear business tables in FK-safe order, re-seed. It refuses to run against production unless `--i-know` is passed **and** the settings name starts with "Demo" |
-| P7-74 | Live-demo accounts on production are **real accounts you sign up** (your email as admin, a second as staff, a phone account as student). Seeded "Demo …" members only populate history |
+| P7-73 | `npm run db:seed -- --reset` for local and `scripts/reset-demo.sh` for the deployment: export a backup, clear business tables in FK-safe order, re-seed. It refuses to run unless `--i-know` is passed **and** the settings name starts with "Demo" (so it can never wipe a real pilot) |
+| P7-74 | Live-demo accounts on the deployment are **real accounts you sign up** (your email as admin, a second as staff, a phone account as student). Seeded "Demo …" members only populate history |
 | P7-75 | Seed data is never presented as pilot results (PRD 14). Add that sentence to the demo script |
 
 ### 3.8 Admin scripts
 
 | ID | Task |
 |---|---|
-| P7-76 | `scripts/set-password.ts <email> <temp-password> [--env staging\|production]`: hashes locally with `hashPassword` (no Worker CPU), then renders the deploy config and runs the equivalent of `npm run remote -- d1 execute … --remote` to update the `credential` account row (`technologies.md` §6.6). Prints a reminder to tell the member to change it |
-| P7-77 | `scripts/make-admin.ts <email> [--env …]`: the admin lock-out fix (runbook P7-86) as a script, so nobody hand-types SQL against production |
+| P7-76 | **Moved to Phase 1 (P1-21) and built there.** Remaining here: test it on the deployment. `scripts/set-password.ts <email> <temp-password> [--local]`: hashes locally with `hashPassword` (no Worker CPU), then renders the deploy config and runs the equivalent of `npm run remote -- d1 execute … --remote` (or the local D1 with `--local`) to update the `credential` account row (`technologies.md` §6.6). Prints a reminder to tell the member to change it |
+| P7-77 | `scripts/make-admin.ts <email> [--local]`: the admin lock-out fix (runbook P7-86) as a script, so nobody hand-types SQL against the live database |
 
 ### 3.9 Runbook (`docs/runbook.md`)
 
 | ID | Section | Contents |
 |---|---|---|
-| P7-80 | Deploy | `npm run check` → `npm run db:migrate:staging` → `npm run deploy:staging` (ends with a smoke test) → check on staging → `npm run db:migrate:remote` → `npm run deploy`; what "additive only" means; first-ever deploy uses `npm run deploy:first[:staging]` (`scripts/deploy.sh --first`; uploads `BETTER_AUTH_SECRET`) |
+| P7-80 | Deploy | `npm run check` → `npm run test:e2e` → `npm run preview` for anything risky (there's no staging copy) → `npm run db:migrate:remote` → `npm run deploy` (ends with a smoke test); what "additive only" means; first-ever deploy uses `npm run deploy:first` (`scripts/deploy.sh --first`; uploads `BETTER_AUTH_SECRET`) |
 | P7-81 | Rollback | `wrangler rollback` (code); schema is additive, so rolling back code is safe; never roll back migrations |
-| P7-82 | Restore data | `npm run remote -- d1 time-travel info cleared-prod`; `npm run remote -- d1 time-travel restore cleared-prod --timestamp=<ISO>` (last 7 days); rehearse on staging first (`cleared-staging … --env staging`) |
-| P7-83 | Backups | Weekly `npm run remote -- d1 export cleared-prod --remote --output="$HOME/cleared-backups/cleared-YYYY-MM-DD.sql"` (outside the repository, which is public) during a pilot; store privately (encrypted drive, not GitHub; it contains password hashes and personal data); delete after the retention period |
+| P7-82 | Restore data | `npm run remote -- d1 time-travel info cleared`; `npm run remote -- d1 time-travel restore cleared --timestamp=<ISO>` (last 7 days). This is also the undo for a bad migration. Rehearse it once on the deployment while it holds only demo data (export first) |
+| P7-83 | Backups | Weekly `npm run remote -- d1 export cleared --remote --output="$HOME/cleared-backups/cleared-YYYY-MM-DD.sql"` (outside the repository, which is public) during a pilot; store privately (encrypted drive, not GitHub; it contains password hashes and personal data); delete after the retention period |
 | P7-84 | Quota incident | Symptoms (Error 1027, the daily-limit banner); check the dashboard (requests are shared with any other Worker on the account); what's using quota; wait for 00:00 UTC (5 pm MST / 6 pm MDT); mitigations (close kiosk tabs, raise poll intervals); **never upgrade to paid** |
 | P7-85 | CPU incident (Error 1102) | Find the route in Workers Logs; if it's sign-in/sign-up, follow `technologies.md` §6.4; if it's a page, reduce its server render (P7-25 list) |
-| P7-86 | Admin lock-out | `npx tsx scripts/make-admin.ts <email> --env production` (logged in the runbook with date and reason) |
-| P7-87 | Password reset fallback | Member can't receive the reset email (spam, Brevo cap, Brevo down): staff confirm identity in person → admin runs `scripts/set-password.ts` → member signs in and changes it |
-| P7-88 | Email incident | Brevo cap or deliverability: sign-ups and resets wait until tomorrow or use the fallback sender; for a demo, `REQUIRE_EMAIL_VERIFICATION=false` can be set temporarily (record it) |
-| P7-89 | Secrets rotation | `BETTER_AUTH_SECRET` (`wrangler secret put`; **this signs everyone out**: every session cookie becomes invalid, so do it outside open hours), Brevo key, Cloudflare API token. Never put secrets in `.env*` files (OpenNext can bundle `.env.local`) |
+| P7-86 | Admin lock-out | `npx tsx scripts/make-admin.ts <email>` (logged in the runbook with date and reason) |
+| P7-87 | Forgotten password | There's no self-service reset (no email): staff confirm identity in person → admin runs `scripts/set-password.ts` → member signs in and changes it |
+| P7-89 | Secrets rotation | `BETTER_AUTH_SECRET` (`wrangler secret put`; **this signs everyone out**: every session cookie becomes invalid, so do it outside open hours) and the Cloudflare API token. Never put secrets in `.env*` files (OpenNext can bundle `.env.local`) |
 | P7-90 | Join link leaked | Regenerate in Settings |
 | P7-91 | Label misused / lost | Reprint (same token). If misused, retire the machine and re-add it (new token), then print the new label |
-| P7-92 | Retention purge | The SQL from P7-61 and the unverified-account cleanup from P7-55, run once a term; record the date |
+| P7-92 | Retention purge | The SQL from P7-61 and the never-joined account cleanup from P7-55, run once a term; record the date |
 | P7-93 | "The pass was wrong" report | Check the member's grants (member detail history), the machine's requirements and status; the pass is computed from those records at that time. Fix the records, not the pass |
 
 ### 3.10 Final verification
@@ -156,7 +155,7 @@
 | ID | Task |
 |---|---|
 | P7-95 | Re-run **all automated tests** (unit, service T02–T10, route handlers, action-wrapper sweep, E2E) on the final commit (`npm run check` + `npm run test:e2e`) |
-| P7-96 | Re-run **T01** on production with freshly printed labels on 2 phones, starting from a brand-new student sign-up (email verification included) |
+| P7-96 | Re-run **T01** on production with freshly printed labels on 2 phones, starting from a brand-new student sign-up |
 | P7-97 | Re-run **T11** on production after the final deploy |
 | P7-98 | Run **T12** (P7-23) and record the results |
 | P7-99 | Compile the **PRD 4.2 measurement table** from earlier phases: setup time (P2-63), sign-off (P3-52), status check (P4-42), service logging (P5-42), supervisor check (P6-41), scan-to-pass (P7-23), out-of-service-on-next-scan (T07 #2). Mark each as *classroom measurement*, not a pilot result |
@@ -188,7 +187,7 @@ Not required for the classroom MVP, but listed so nothing is forgotten:
 - [ ] The institution's privacy review is done, or the pilot runs at a community makerspace first (PRD 16).
 - [ ] Privacy notice reviewed by the space's coordinator; retention rule agreed.
 - [ ] Data-residency statement (P7-62) accepted.
-- [ ] Email deliverability checked with the pilot's own email domain (university inboxes may filter Brevo free-sender mail); the password-reset fallback (P7-87) explained to staff.
+- [ ] The password-reset procedure (P7-87) explained to staff: there's no self-service reset.
 - [ ] Labels printed on durable stock (physical cost, outside the $0 software budget) and stuck on 5–10 machines.
 - [ ] Staff briefing (15 min): sign-off, revoke, fault queue, log service, console home, "the pass supports you; you still check".
 - [ ] The door poster (board + join QR) is up.
@@ -204,7 +203,7 @@ Not required for the classroom MVP, but listed so nothing is forgotten:
 - [ ] Every DoD row in §4 has evidence attached (command output, screenshots, the results table).
 - [ ] CPU audit (P7-30…33) recorded with no route over 10 ms, and auth flows passing.
 - [ ] T12 recorded; T01 and T11 re-run on production.
-- [ ] Runbook complete; one restore rehearsed on staging; `set-password` and `make-admin` scripts tested on staging.
+- [ ] Runbook complete; one restore rehearsed on the deployment while it held only demo data; `set-password` and `make-admin` scripts tested locally and on the deployment.
 - [ ] Production holds only clearly fake demo data (or a real pilot's data with the privacy items done).
 - [ ] $0 confirmed: Cloudflare on Free, no payment methods anywhere, no paid add-ons enabled.
 
@@ -214,10 +213,10 @@ Not required for the classroom MVP, but listed so nothing is forgotten:
 
 | # | Item | Status |
 |---|---|---|
-| D1 | The retention purge and unverified-account cleanup are manual, documented procedures (no background job) | Decided |
+| D1 | The retention purge and never-joined account cleanup are manual, documented procedures (no background job) | Decided |
 | D2 | The usage alarm, if adopted, runs in GitHub Actions, not in the app. Since 2026-11-22 the project uses no GitHub Actions otherwise, so adopting it is an explicit opt-in | Open |
 | D3 | WCAG 2.2 AA as the accessibility bar | Decided |
-| D4 | Admin password reset is a local script that hashes on the laptop, not an in-app feature | Decided: avoids Worker CPU and a new privileged screen |
+| D4 | Password reset is a local admin script that hashes on the laptop, not an in-app feature (Cleared sends no email) | Decided: avoids Worker CPU and a new privileged screen |
 | D5 | `haveIBeenPwned` check only if the CPU audit shows headroom | Decided |
 | Q1 | Should the PRD itself be updated for the Cloudflare change, or is `technologies.md` an acceptable addendum? | Open |
 | Q2 | Should production keep demo data after the demo, or be reset before a pilot? Proposed: reset + Setup on the pilot's real makerspace | Proposed |
@@ -226,9 +225,8 @@ Not required for the classroom MVP, but listed so nothing is forgotten:
 
 | Risk | Mitigation |
 |---|---|
-| A page or sign-in path exceeds 10 ms CPU in production only | CPU audit P7-30…33 on staging; §6.4 decision rule for auth; P7-25 list for pages |
+| A page or sign-in path exceeds 10 ms CPU on the deployment only (not locally) | CPU audit P7-30…33 on the deployment; §6.4 decision rule for auth; P7-25 list for pages |
 | T12 misses its target on cellular | P7-25 optimisations; measure on campus Wi-Fi too; the pass streams a skeleton immediately |
-| Verification or reset emails land in spam on demo day | Seeded verified accounts on staging; P7-87 fallback; test the exact inboxes the day before |
 | Free-tier terms change before the demo | Re-check §19 sources in the final week; logs are optional |
 | Audit findings exceed the time left | Fix anything that blocks a DoD item first; log the rest as P1 with reasons |
-| Demo-day connectivity | A recorded demo video (P7-100) as backup; staging as a fallback URL (with staging labels) |
+| Demo-day connectivity | A recorded demo video (P7-100) as backup; a local `npm run preview` as a last resort (its labels carry the "NOT THE REAL APP" banner) |
