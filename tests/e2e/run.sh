@@ -68,7 +68,8 @@ if ! $ready; then echo "E2E: server not ready" >&2; cat "$tmp/server.log" >&2; e
 # ("execution context was destroyed") and flaky failures.
 echo "E2E: warming up routes"
 for path in /machines /me/certifications /help /m/warm-up /console /console/faults \
-  /sign-in /sign-up /setup /join/warm-up /definitely-not-a-page; do
+  /console/rooms /console/machines /console/machines/new /console/labels /console/door-poster \
+  /console/certifications /sign-in /sign-up /setup /join/warm-up /definitely-not-a-page; do
   curl -sS -o /dev/null --max-time 120 "$base_url$path" || true
 done
 

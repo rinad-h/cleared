@@ -113,6 +113,11 @@ test("save the admin's session and warm up the signed-in routes", async ({ page,
     "/console/settings",
     "/console/faults",
     "/console/certifications",
+    "/console/rooms",
+    "/console/machines",
+    "/console/machines/new",
+    "/console/labels",
+    "/console/door-poster",
   ]) {
     await page.goto(path);
     await expect(page.locator("h1")).toBeVisible();
