@@ -131,7 +131,7 @@ There is no test-auth stub (`technologies.md` §6.7). `npm run check` still chec
 
 | ID | Spike | Method | Decision |
 |---|---|---|---|
-| **P0-80 ★** | **S1: Better Auth email + password CPU on Workers Free** (light check; comparable apps on this exact setup sign up and sign in without failures) | After the first deploy, do **5–10 sign-ups and sign-ins** by hand or with a small script. Confirm no Cloudflare **1102** errors and note `cpuTime` in Workers Logs. Delete the test users | **No failures** (expected) → keep Better Auth's default scrypt. **Failures** → native `node:crypto` scrypt with the same parameters and format (`technologies.md` §6.4), re-test. **Still failing** → decide with the project owner: fall back to Google + email codes (no hashing). **Never** lower scrypt cost, **never** upgrade to paid |
+| **P0-80 ★** | **S1: Better Auth email + password CPU on Workers Free** (light check; comparable apps on this exact setup sign up and sign in without failures) | After the first deploy, do **5–10 sign-ups and sign-ins** by hand or with a small script. Confirm no Cloudflare **1102** errors and note `cpuTime` in Workers Logs. Delete the test users | **No failures** (expected) → keep Better Auth's default scrypt. **Failures** → native `node:crypto` scrypt with the same parameters and format (`technologies.md` §6.4), re-test. **Still failing** → decide with the project owner: accept and retry, or Google sign-in (no hashing). **Never** lower scrypt cost, **never** upgrade to paid. **Outcome:** the default already is native scrypt; bursts failed; owner chose accept + retry (§7) |
 | **P0-81 ★** | **S2: server-rendering CPU** | Deploy a representative **pass-like page** (session read + 5 D1 queries + ~40 elements) and a **board-like page** (60 tiles) to the deployment (with `ENABLE_SPIKES=1`). Call each 50 times; read `cpuTime` (median, p99) | p99 ≤ 5 ms → proceed. 5–10 ms → apply `technologies.md` §5.2 rules strictly. > 10 ms → render the board client-side from the route handler JSON |
 | P0-82 ★ | S3: rate-limit binding on Free | A temporary spike route (dev, or the deployment with `ENABLE_SPIKES=1`) calls `RL_ACTIONS.limit({ key: "spike" })` 25 times | Works → binding. Doesn't deploy or doesn't limit → D1 fallback (Phase 6) |
 | P0-83 | S4: static assets not billed | Load a page while running `npx wrangler tail cleared`: only the page request runs the Worker, not `/_next/static/*` | Confirmed |
@@ -194,7 +194,7 @@ docs/runbook.md (stub)   docs/setup-and-deploy.md (verified)
 | Decision | Value | Date |
 |---|---|---|
 | Subdomain chosen and recorded privately | yes/no | |
-| **S1:** sign-up/sign-in failures out of 5–10; median `cpuTime`; hasher | | |
+| **S1:** sign-up/sign-in failures out of 5–10; median `cpuTime`; hasher | **0/10** sign-in failures (sequential, build `01e7dc3`). Bursts of 50: 14/50 sign-ups and 30/50 sign-ins answered 503 (presumed Error 1102; not confirmed in logs). Earlier S1 run: 76–104 ms CPU. Median `cpuTime` for this run not captured. **Hasher:** Better Auth's default, which on Workers already resolves to native `node:crypto` scrypt (`@better-auth/utils` `workerd` export), so no faster option exists. **Decision (project owner):** keep it, add a client retry on 503 for sign-up/sign-in, watch for 1102s; Google sign-in if real users hit failures (Phase 1 P1-01, D2) | 2026-11-23 |
 | **S2:** pass-like and board-like p99 `cpuTime`; render strategy | | |
 | S3: rate-limit binding works on Free? | | |
 
@@ -232,7 +232,7 @@ docs/runbook.md (stub)   docs/setup-and-deploy.md (verified)
 
 | Item | Notes |
 |---|---|
-| S1 fails even with native scrypt | Unlikely. If it happens, the only $0 options are dropping passwords (Google sign-in) or accepting failures. Decide before Phase 1 |
+| S1 fails even with native scrypt | **Happened** (bursts only; the default is already native). Decided 2026-11-23: accept, with a client retry on 503; Google sign-in if real users hit failures (§7) |
 | Other Workers on the same Cloudflare account | Quotas are per account. A busy day elsewhere could take Cleared down. Use a dedicated account |
 | OpenNext / Next 16 quirks | Handle the ones in `technologies.md` §16; pin versions; upgrade deliberately |
 | Workers Logs pricing change (Dec 1, 2026) | S1/S2 rely on `cpuTime` in logs. If logs stop being free, use `wrangler tail`, which shows CPU per request |

@@ -86,7 +86,7 @@ CREATE INDEX members_email        ON members(email COLLATE NOCASE);
 
 As in `technologies.md` §6.3: `emailAndPassword` (8–128 chars, `autoSignIn: true`; no verification, no reset emails), no `emailVerification` block, 30-day sessions with a 5-minute cookie cache, **database rate limits** with custom rules, `trustedOrigins: [PUBLIC_BASE_URL]`, `cf-connecting-ip` for client IPs, `nextCookies()` last.
 
-**If P1-01 shows native scrypt fits:** `emailAndPassword.password = { hash, verify }` implemented in `src/server/password.ts` with `node:crypto` `scrypt` (N=16384, r=16, p=1, 64-byte key, 16-byte salt, NFKC-normalised password, `salt:key` hex). That's the same format as Better Auth's default, so hashes made either way verify either way. A unit test proves it: a hash from `better-auth/crypto` `hashPassword` verifies with ours, and the other way round.
+**Password hashing (P1-01, decided 2026-11-23):** keep Better Auth's default. No custom `password: { hash, verify }`: on Workers, `@better-auth/utils/password` already resolves (`workerd` export condition) to native `node:crypto` `scrypt`, so there's no faster hasher to switch to. Sign-up and sign-in can still occasionally go over the CPU limit under a burst, which Cloudflare answers with a **503** (Error 1102) before the handler writes anything. The auth client therefore **retries a 503 on sign-up and sign-in up to twice** (short back-off, ~300 ms then ~800 ms) before showing "Cleared is busy, try again". A sign-up retry that gets "already exists" means the first attempt did finish: send the user to sign-in with the email filled in.
 
 Mounted at `src/app/api/auth/[...all]/route.ts` with `toNextJsHandler(getAuth())` (a new instance per request).
 
@@ -232,7 +232,7 @@ Staff and admins see a **Member app ⇄ Staff console** switch in the header (PR
 
 | ID | Task | Decision recorded |
 |---|---|---|
-| P1-01 ★ | **Password hashing CPU (S1 follow-up):** S1 measured Better Auth's default scrypt at 76–104 ms CPU with Error 1102 after a short burst. Measure native `node:crypto` scrypt with the same parameters, in the same burst test, with `ENABLE_SPIKES` on | Native scrypt fits → P1-12 required. Still 1102s → stop and decide with the project owner |
+| P1-01 ★ | **Password hashing CPU (S1 follow-up):** S1 measured Better Auth's default scrypt at 76–104 ms CPU with Error 1102 after a short burst. Measure native `node:crypto` scrypt with the same parameters, in the same burst test, with `ENABLE_SPIKES` on | **Done 2026-11-23.** The default already *is* native scrypt on Workers (see §4.1). 10/10 sequential sign-ins OK; bursts of 50 gave 503s (14/50 sign-ups, 30/50 sign-ins). Project owner chose: keep the default + client retry (P1-12), watch for 1102s (P1-63, P7-33), Google sign-in if real users hit failures |
 
 ### 7.2 Backend
 
@@ -240,7 +240,7 @@ Staff and admins see a **Member app ⇄ Staff console** switch in the header (PR
 |---|---|
 | P1-10 ★ | Generate Better Auth's schema; write `src/db/schema.ts` additions (`settings`, `members`); `npm run db:generate` → `0001_identity.sql`; review; apply locally, then to the deployment (`npm run db:migrate:remote`) |
 | P1-11 ★ | `src/lib/auth.ts` (`getAuth()`, `getSession()`) with the §4.1 configuration; `src/app/api/auth/[...all]/route.ts`; `src/lib/auth-client.ts` |
-| P1-12 ★ | Native scrypt hasher **if P1-01 confirms it fits**, with the cross-compatibility unit test |
+| P1-12 ★ | Retry on 503 for sign-up and sign-in in `src/lib/auth-client.ts` (§4.1): at most 2 retries, only for 503, never for 4xx |
 | P1-14 ★ | `getActor()`, `authz.ts`, `permissions.ts` |
 | P1-15 ★ | `action()` wrapper + the "all actions wrapped" test |
 | P1-16 ★ | Services: `setup.completeSetup`, `join.preview`, `join.join`, `settings.get/update/regenerateJoinLink`, `members.search/get/update` |
@@ -277,7 +277,7 @@ Service tests call services with actors and explicit `now` (README §4.5). E2E u
 | P1-46 | Settings: admin only; invalid time zone → validation error; `data_version` increments |
 | P1-47 ★ | **All server actions wrapped** by `action()` (§4.4) |
 | P1-49 | `next` sanitiser: `//evil.com`, `https://evil.com`, `javascript:` → `/machines` |
-| P1-51 | Native hasher (if used): cross-verifies with `better-auth/crypto` `hashPassword` |
+| P1-51 | Auth retry (P1-12): a 503 is retried at most twice then shows the busy message; 400/401/429 are never retried |
 | P1-52 ★ | **E2E** `auth.spec.ts`: sign up → signed in → setup → sign out → sign in with a wrong password (generic error) → sign in → change password → sign out → sign in with the new password |
 | P1-53 ★ | **E2E** `join.spec.ts`: second account signs up, opens the join link, joins; admin promotes them to staff; staff sees the console |
 
@@ -307,7 +307,7 @@ Service tests call services with actors and explicit `now` (README §4.5). E2E u
 | # | Item | Status |
 |---|---|---|
 | D1 | Email + password **without** email verification or self-service reset: the app sends no email. Deviation from FR-01 ("email with verification"); anyone can register with an address they don't own, which matters little because joining needs the staff join link | Decided 2026-11-23 (project owner): no free sender works without a domain or an organization postal address |
-| D2 | Hashing: Better Auth default scrypt, or native `node:crypto` scrypt with the same format | Decided by spike S1 |
+| D2 | Hashing: Better Auth's default scrypt (already native `node:crypto` on Workers), plus a client retry on 503 for sign-up/sign-in. Google sign-in is the fallback if real users hit 1102s | Decided 2026-11-23 (project owner), P1-01 |
 | D3 | Roles and status in `members`, not Better Auth | Decided (PRD 10.2) |
 | D4 | Membership read on every request | Decided: suspension applies immediately |
 | D5 | One generic sign-in error. Sign-up does reveal that an email is already registered (Better Auth's behaviour with auto sign-in on), which is accepted for a classroom app | Decided 2026-11-23 |
@@ -315,14 +315,14 @@ Service tests call services with actors and explicit `now` (README §4.5). E2E u
 | D7 | No test-auth stub; services take an actor; E2E uses real sign-up | Decided (replaces PRD 11.1 stub) |
 | Q1 | Can members edit their own display name? Proposed: not in MVP (prevents impersonation on passes); staff can't either; revisit in P1 | Proposed |
 | Q2 | Accounts that never join piling up: proposed cleanup query in the runbook (delete `user` rows older than 30 days with no `members` row), run by hand once a term | Proposed |
-| Q4 | Should admins reset passwords in the console instead of with a laptop script? It would hash on the Worker, so it waits for the P1-01 result | Open |
+| Q4 | Should admins reset passwords in the console instead of with a laptop script? It would hash on the Worker (one sign-up's worth of CPU; P1-01 says that's fine at classroom volume), so it's possible; proposed: keep the script for the MVP | Open |
 | Q3 | Should the sign-up page require an "I agree to the Terms" checkbox? Proposed: a sentence with links is enough for the MVP | Proposed |
 
 ## 10. Risks
 
 | Risk | Mitigation |
 |---|---|
-| Password hashing exceeds the CPU limit on the deployment (S1 saw 1102s with the default hasher) | Native scrypt (P1-01, P1-12); monitor 1102s on auth routes (P1-63); otherwise decide with the project owner |
+| Password hashing exceeds the CPU limit on the deployment (S1 and P1-01 saw 1102s in bursts of 50; the default is already native scrypt) | Client retry on 503 (P1-12); monitor 1102s on auth routes (P1-63, P7-33); if real users still hit failures, switch to Google sign-in (`technologies.md` §6.4) |
 | Students forget passwords | An admin resets it with `scripts/set-password.ts`; sessions last 30 days, so resets are rare |
 | Someone registers with another person's email address | Joining needs the staff join link; staff see every member's name and email and can suspend |
 | Better Auth option names differ from this doc | Confirm against the installed version; the behaviour is the requirement |

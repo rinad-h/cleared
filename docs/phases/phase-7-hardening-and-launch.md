@@ -80,7 +80,7 @@
 | P7-30 | **Server-rendered pages:** on the deployment (while it holds only demo data) with demo data at 10 and 60 machines, load each hot page 20 times and read `cpuTime` from Workers Logs: pass (`/m/[token]`), board (`/machines`), console home (`/console`), machine detail (`/console/machines/[id]`), member detail, fault queue | p99 < 5 ms per page (half the 10 ms limit); investigate anything above |
 | P7-31 | **Route handlers:** `/api/status-board` and `/api/console`, both 304 and 200 paths | 304 p99 < 2 ms; 200 p99 < 5 ms |
 | P7-32 | **Server actions:** start/end session, report fault, sign off, log service | p99 < 5 ms |
-| P7-33 | **Better Auth (spike S1 follow-up):** 50 sign-ups, 50 sign-ins, 10 password changes on the deployment (before a pilot; delete the test users afterwards); count **Error 1102** and record `cpuTime` | 0 failures. If any: apply the `technologies.md` §6.4 decision rule (native `node:crypto` scrypt → re-measure → Google sign-in fallback); never lower the scrypt cost, never pay |
+| P7-33 | **Better Auth (spike S1 follow-up):** 50 sign-ups, 50 sign-ins, 10 password changes on the deployment (before a pilot; delete the test users afterwards); count **Error 1102** and record `cpuTime` | Bursts can hit Error 1102 (P1-01). Pass: with the client retry (Phase 1 P1-12), no user-visible sign-up/sign-in failure at classroom pace. Otherwise apply `technologies.md` §6.4: Google sign-in fallback; never lower the scrypt cost, never pay |
 | P7-34 | Record all results in `technologies.md` §4.1/§6.5 | — |
 
 ### 3.5 Free-tier safety audit (`technologies.md` §13–14)
