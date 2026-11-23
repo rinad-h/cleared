@@ -18,7 +18,7 @@ const CONSOLE_PAGES = [
   "/console/door-poster",
 ];
 // Pages anyone can open.
-const PUBLIC_PAGES = ["/help", "/sign-in", "/sign-up"];
+const PUBLIC_PAGES = ["/help", "/terms", "/privacy", "/sign-in", "/sign-up"];
 // Signed-in areas: proxy.ts sends signed-out visitors to sign-in.
 const PROTECTED_PATHS = ["/machines", "/m/example-token", "/me/account", "/console", "/console/members", "/setup", "/join/example-token"];
 const WIDTHS = [320, 375];

@@ -15,7 +15,7 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Signed-in areas. `/help`, `/sign-in`, `/sign-up` and the API stay public
+  // Signed-in areas. `/help`, `/terms`, `/privacy`, `/sign-in`, `/sign-up` and the API stay public
   // (the API routes check the session themselves and answer 401).
   matcher: [
     "/machines/:path*",

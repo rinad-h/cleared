@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { Toaster } from "sonner";
 import { HeaderAccount } from "@/components/layouts/header-account";
 import { ConsoleDrawer, ConsoleSidebar } from "@/components/layouts/console-nav";
+import { LegalFooter } from "@/components/legal/legal-footer";
 import { getOverdueCheckupCount } from "@/data/checkups";
 import { getOpenFaultCount } from "@/data/faults";
 import { getMe } from "@/data/me";
@@ -59,4 +60,5 @@ export default function ConsoleLayout({ children }: LayoutProps<"/console">) {
       <Toaster position="top-center" richColors={false} closeButton />
     </div>
   );
+        <LegalFooter className="border-t px-4 md:px-8 print:hidden" />
 }
