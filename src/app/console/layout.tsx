@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { Toaster } from "sonner";
 import { HeaderAccount } from "@/components/layouts/header-account";
 import { ConsoleDrawer, ConsoleSidebar } from "@/components/layouts/console-nav";
+import { getOpenFaultCount } from "@/data/faults";
 import { getMe } from "@/data/me";
 
 async function isAdmin(): Promise<boolean> {
@@ -10,11 +11,13 @@ async function isAdmin(): Promise<boolean> {
 }
 
 async function SidebarForRole() {
-  return <ConsoleSidebar isAdmin={await isAdmin()} />;
+  const [admin, faultCount] = await Promise.all([isAdmin(), getOpenFaultCount()]);
+  return <ConsoleSidebar isAdmin={admin} faultCount={faultCount} />;
 }
 
 async function DrawerForRole() {
-  return <ConsoleDrawer isAdmin={await isAdmin()} />;
+  const [admin, faultCount] = await Promise.all([isAdmin(), getOpenFaultCount()]);
+  return <ConsoleDrawer isAdmin={admin} faultCount={faultCount} />;
 }
 
 /**

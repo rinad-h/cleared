@@ -51,3 +51,48 @@ export function formatWeekday(ms: number, timeZone: string): string {
 export function daysUntil(ms: number, now: number): number {
   return Math.max(0, Math.ceil((ms - now) / 86_400_000));
 }
+
+/* ------------------------------------------- date/time inputs (P5-27) */
+
+/** The wall-clock parts of `ms` in `timeZone`. */
+function zonedParts(ms: number, timeZone: string) {
+  const parts = formatter(timeZone, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(ms);
+  const get = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((p) => p.type === type)?.value ?? 0);
+  return { year: get("year"), month: get("month"), day: get("day"), hour: get("hour") % 24, minute: get("minute"), second: get("second") };
+}
+
+const pad = (n: number, width = 2) => String(n).padStart(width, "0");
+
+/** `ms` as a `<input type="datetime-local">` value ("2026-01-05T09:00") in the makerspace's time zone. */
+export function toDateTimeLocal(ms: number, timeZone: string): string {
+  const p = zonedParts(ms, timeZone);
+  return `${pad(p.year, 4)}-${pad(p.month)}-${pad(p.day)}T${pad(p.hour)}:${pad(p.minute)}`;
+}
+
+/**
+ * A `datetime-local` value read as wall-clock time in `timeZone`, as UTC ms
+ * (null if it isn't a valid value). In a DST gap the result is shifted by the
+ * gap; in an overlap, the earlier instant wins.
+ */
+export function fromDateTimeLocal(value: string, timeZone: string): number | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value);
+  if (!m) return null;
+  const wall = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]));
+  if (Number.isNaN(wall)) return null;
+  const offsetAt = (ms: number) => {
+    const p = zonedParts(ms, timeZone);
+    return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - Math.floor(ms / 1000) * 1000;
+  };
+  let guess = wall - offsetAt(wall);
+  const second = wall - offsetAt(guess);
+  if (second !== guess) guess = Math.min(guess, second);
+  return guess;
+}

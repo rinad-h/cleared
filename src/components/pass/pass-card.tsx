@@ -1,7 +1,8 @@
 import { ExternalLink, MapPin } from "lucide-react";
 import Link from "next/link";
 import { StatusBadge, type Status } from "@/components/status-badge";
-import { daysUntil, formatDate, formatDateTime, formatTimeOrDay } from "@/lib/format";
+import { ReportProblem } from "@/components/faults/report-problem";
+import { daysUntil, formatDate, formatTimeOrDay } from "@/lib/format";
 import type { OutOfServiceReason } from "@/server/domain/enums";
 import { EXPIRING_SOON_DAYS } from "@/server/domain/grants";
 import type { MissingCert, PassStatus } from "@/server/domain/pass";
@@ -26,9 +27,9 @@ const SPOKEN: Record<PassStatus, string> = {
 };
 
 const OOS_REASONS: Record<OutOfServiceReason, string> = {
-  issue_reported: "Issue reported",
-  maintenance: "Maintenance",
-  other: "Other",
+  issue_reported: "issue reported",
+  maintenance: "maintenance",
+  other: "other",
 };
 
 /**
@@ -65,6 +66,8 @@ export function PassCard({ data }: { data: Recognized }) {
       <PassBody data={data} />
 
       <SessionPanel data={data} />
+
+      {data.actions.canReportFault ? <ReportProblem machineId={machine.id} machineName={machine.name} /> : null}
     </div>
   );
 }
@@ -131,27 +134,18 @@ function PassBody({ data }: { data: Recognized }) {
     case "OUT_OF_SERVICE": {
       const oos = machine.outOfService;
       return (
-        <div className="space-y-1 text-lg">
+        <div className="space-y-1 text-lg" data-testid="out-of-service-details">
           <p className="font-medium">This machine can&apos;t be used right now.</p>
           {oos ? (
-            <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-base">
-              <dt className="text-muted-foreground">Since</dt>
-              <dd>{formatDateTime(oos.since, tz)}</dd>
-              <dt className="text-muted-foreground">Reason</dt>
-              <dd>{OOS_REASONS[oos.reason]}</dd>
-              {oos.note ? (
-                <>
-                  <dt className="text-muted-foreground">Note</dt>
-                  <dd className="break-words">{oos.note}</dd>
-                </>
-              ) : null}
+            <>
+              <p className="text-base">
+                since {formatTimeOrDay(oos.since, serverNow, tz)} · {OOS_REASONS[oos.reason]}
+              </p>
+              {oos.note ? <p className="text-base break-words">&ldquo;{oos.note}&rdquo;</p> : null}
               {oos.expectedBackAt ? (
-                <>
-                  <dt className="text-muted-foreground">Expected back</dt>
-                  <dd>{formatDateTime(oos.expectedBackAt, tz)} (estimate)</dd>
-                </>
+                <p className="text-base">expected back {formatTimeOrDay(oos.expectedBackAt, serverNow, tz)} (estimate)</p>
               ) : null}
-            </dl>
+            </>
           ) : null}
         </div>
       );

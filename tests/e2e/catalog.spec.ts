@@ -82,6 +82,8 @@ test("room → certification → machine → label → scan → retire", async (
   await page.goto("/console/machines");
   await page.getByRole("link", { name: machine }).click();
   await expect(page.getByRole("heading", { level: 1, name: machine })).toBeVisible();
+  await page.getByRole("link", { name: "Edit machine" }).click();
+  await expect(page).toHaveURL(/\/edit$/);
   await page.getByRole("button", { name: "Retire machine" }).click();
   const confirm = page.getByRole("alertdialog");
   await expect(confirm.getByRole("button", { name: "Retire" })).toBeDisabled();
