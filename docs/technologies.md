@@ -379,7 +379,7 @@ Next.js specifics: `getAuth()` builds the instance **per request** from `getEnv(
 
 ### 6.3 Configuration (`src/lib/auth.ts`)
 
-Option names follow Better Auth 1.7; confirm against the installed version.
+Option names follow Better Auth 1.7; confirm against the installed version. The real file adds a display-name check on sign-up (`databaseHooks`), disables `/update-user`, turns telemetry off and routes Better Auth's logger through `log()` with emails scrubbed (Phase 1 §11).
 
 ```ts
 export function getAuth() {
@@ -445,9 +445,9 @@ export function getAuth() {
 
 Cleared sends no email, so this is the only way to reset a forgotten password. Staff confirm who the member is (in person), then an admin sets a temporary password:
 
-1. On a laptop, run `npx tsx scripts/set-password.ts <email> <temp-password>`. It hashes locally with `hashPassword` from `better-auth/crypto` (as the seed script does), so it uses no Worker CPU.
-2. The script runs `node scripts/render-wrangler.mjs` first, then the equivalent of `npm run remote -- d1 execute cleared --remote --command "UPDATE account SET password = ? WHERE provider_id = 'credential' AND user_id = (SELECT id FROM user WHERE email = ?)"` (the committed `wrangler.jsonc` only has a placeholder database ID).
-3. The member signs in and changes the password.
+1. On a laptop, run `npx tsx scripts/set-password.ts <email> <temp-password>` (add `--local` for your local D1). It hashes locally with `hashPassword` from `better-auth/crypto`, so it uses no Worker CPU.
+2. The script runs `node scripts/render-wrangler.mjs` first, then the equivalent of `npm run remote -- d1 execute DB --remote --command "UPDATE account SET password = … WHERE provider_id = 'credential' AND user_id = (SELECT id FROM "user" WHERE email = …) RETURNING id; DELETE FROM session WHERE user_id = (…)"` (the committed `wrangler.jsonc` only has a placeholder database ID). It says so if no email + password account has that email, and it signs the member out everywhere.
+3. The member signs in and changes the password on their Account page.
 
 ### 6.7 No test-auth stub
 
@@ -512,7 +512,8 @@ src/
 ├─ server/
 │  ├─ services/    the business rules: (db, actor, input, now) → result. No Next.js imports
 │  ├─ domain/      pure logic: pass engine, session rules, checkups, time maths
-│  ├─ authz.ts     requireMember / requireRole / can() on an Actor
+│  ├─ authz.ts     requireUser / requireMember / requireRole on an Actor
+│  ├─ batch.ts     atomic D1 batch that accepts raw `sql` and query builders (§16)
 │  └─ machine-write.ts   write-token compare-and-swap helper (§12.2)
 ├─ db/             schema.ts, index.ts (getDb), auth-schema.ts
 ├─ lib/            auth.ts, auth-client.ts, actor.ts (session → Actor), action.ts, permissions.ts, validation.ts
@@ -739,7 +740,7 @@ Things that are known to matter for Next.js 16 + OpenNext + D1 + Better Auth on 
 | Quirk | What to do |
 |---|---|
 | OpenNext/workerd can hang when serving Next 16 **Cache Components** output | Enable `cacheComponents` only when `NODE_ENV === "development"` in `next.config.ts`. Session reads must still sit inside `<Suspense>` (the dev build enforces it) |
-| `@opennextjs/aws` expects a CommonJS default export from `cookie` when building the Worker middleware | **Not needed as of `@opennextjs/cloudflare` 1.20.18** (Phase 0 built and ran the proxy without it). If a later upgrade breaks the middleware build, add an npm `overrides` entry pinning `cookie` for `@opennextjs/aws` |
+| `@opennextjs/aws` expects a CommonJS default export from `cookie` when building the Worker middleware (`import_cookie.default.parse`); `cookie@1.x` has none | **Needed since Phase 1:** any request that carries a cookie through `proxy.ts` failed with 500 `Cannot read properties of undefined (reading 'parse')` in `workerd` (not in `next dev`). `package.json` `overrides` pins `cookie` to `0.7.2` for `@opennextjs/aws`. Re-check after every OpenNext upgrade with signed-in requests in `npm run preview` |
 | Next 16 `proxy.ts` always runs on the Node.js runtime; OpenNext warns that Node.js middleware on Cloudflare is "experimental" | Works in `npm run preview` (real `workerd`). Keep `proxy.ts` to a cookie-presence redirect, and re-check redirects in `npm run preview` and on the deployment after every OpenNext upgrade |
 | `@cloudflare/vitest-pool-workers` was renamed `@cloudflare/vitest-plugin` (Vitest 4 API: `cloudflareTest()` plugin instead of `defineWorkersConfig`) | `vitest.config.mts` uses `cloudflareTest({ wrangler, main })` with a stub `main`, since `.open-next/worker.js` only exists after a build |
 | `wrangler.jsonc` vars are the **production** values, and `next dev` reads them | `.dev.vars` overrides `ENVIRONMENT`, `PUBLIC_BASE_URL` and `BETTER_AUTH_URL` locally; the E2E harness overrides them through `process.env`, which `src/lib/env.ts` honours only in `next dev` |
@@ -754,6 +755,14 @@ Things that are known to matter for Next.js 16 + OpenNext + D1 + Better Auth on 
 | First deploy needs the required secrets | `opennextjs-cloudflare deploy --secrets-file <tmp file>` (`npm run deploy:first` → `scripts/deploy.sh --first`, `setup-and-deploy.md` §9.2) |
 | npm appends `-- args` to the **end** of a script's `&&` chain | Deploy scripts are one shell script that rejects extra arguments, so a passed-through flag can't silently change what deploys |
 | Under `next dev` (Cache Components), dynamic reads outside `<Suspense>` error; a streamed page can't change its HTTP status, and `export const instant` is rejected by production builds without Cache Components | Gate dev-only *pages* (spikes: development, or `ENABLE_SPIKES=1` on the deployment) inside the Suspense boundary (they render the not-found page with status 200); gate *route handlers* normally (real 404) |
+| drizzle-orm 0.45: a raw ``db.run(sql`…`)`` **with bound parameters** crashes inside `db.batch()` (`Cannot read properties of undefined (reading 'bind')`) | Mutation batches that need raw SQL use `batch(db, [...])` from `src/server/batch.ts`, which compiles each statement and calls D1's own `batch()` (still one atomic batch) |
+| Better Auth's CLI is now the `auth` package (`npx auth generate`); `@better-auth/cli` stopped at 1.4/1.5 | The Drizzle generator also ships inside `@better-auth/drizzle-adapter`; Phase 1 §11 says how `auth-schema.ts` was produced |
+| `betterAuth()` calls `Math.random()` when created; dev's Cache Components rejects that before a dynamic access | `getSessionUser()` awaits `headers()` first, then creates the instance |
+| Dev validates **instant navigation**: a session read must sit inside a `<Suspense>` *below* the layout two sibling pages share, so a group-level `loading.tsx` isn't enough | Signed-in pages render `<Gate>`, which has its own `<Suspense>` |
+| Next 16 keeps the previous page mounted but hidden after a client navigation | E2E specs locate repeated controls by role (`getByRole` skips hidden elements), not by label |
+| A Turbopack dev cache left by an interrupted E2E run can put every page into an "HMR hash mismatch" reload loop | `tests/e2e/run.sh` deletes `.next-e2e` before starting |
+| Production builds (no Cache Components) try to prerender any page that hasn't made a dynamic access yet; touching D1 (`getDb()`) first then fails the build ("Error occurred prerendering page") | Read the session (`getActor()`) or call `connection()` **before** `getDb()` in page data functions (`src/data/*`) |
+| Local `wrangler d1 execute --json` doesn't report `meta.changes` | Scripts that need a count use `RETURNING` and count rows (`scripts/set-password.ts`) |
 | Windows Git Bash checks files out with CRLF, which breaks `set -euo pipefail` | `.gitattributes`: `* text=auto eol=lf`; scripts spawn tools with `process.execPath` instead of `npx` |
 
 ---

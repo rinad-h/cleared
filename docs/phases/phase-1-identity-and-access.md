@@ -31,7 +31,7 @@
 
 ## 3. Data model
 
-Migration `drizzle/0001_identity.sql`. Better Auth's tables are generated with its CLI (`npx @better-auth/cli generate` for the Drizzle SQLite adapter) into `src/db/auth-schema.ts`, then included in the drizzle-kit migration and reviewed by hand.
+Migration `drizzle/0001_identity.sql`. Better Auth's tables are generated into `src/db/auth-schema.ts` by Better Auth's own Drizzle schema generator (the code behind `npx auth generate`; the CLI package is now `auth`, not `@better-auth/cli`), re-exported from `src/db/schema.ts`, included in the drizzle-kit migration and reviewed by hand. See §11 for how it was run.
 
 ### 3.1 Better Auth tables (generated; don't hand-edit columns)
 
@@ -248,6 +248,7 @@ Staff and admins see a **Member app ⇄ Staff console** switch in the header (PR
 | P1-18 ★ | `bumpVersion()` statement helper, included in every mutation batch |
 | P1-19 | Zod schemas: `SignUpForm` (client-side checks mirroring Better Auth's), `SetupInput`, `JoinInput`, `SettingsPatch`, `MemberPatch`, `DisplayName` (trimmed, 1–80, no control characters) |
 | P1-20 | `proxy.ts` matcher |
+| P1-21 | `scripts/set-password.ts <email> <temp-password> [--local]` (moved here from Phase 7 P7-76: the demo checkpoint and P1-62 need it). Hashes locally, sets the `credential` password and signs the user out everywhere |
 
 ### 7.3 Frontend
 
@@ -294,11 +295,11 @@ Service tests call services with actors and explicit `now` (README §4.5). E2E u
 
 ## 8. Exit criteria
 
-- [ ] The E2E auth and join flows are green; service tests P1-41…P1-49 and P1-51 green.
+- [x] The E2E auth and join flows are green; service tests P1-41…P1-49 and P1-51 green (locally, 2026-11-23).
 - [ ] On the deployed app with a phone: sign-up → setup/join → promote works; an admin password reset works; the session persists.
 - [ ] No 1102 errors on auth routes in the deployment's logs over the phase.
-- [ ] The hashing decision recorded (P1-01).
-- [ ] Migration `0001` applied to the deployment. First-run Setup there uses the clearly fake name "Demo Makerspace": Phase 2 builds on it, and a real pilot later starts from a reset database (Phase 7).
+- [x] The hashing decision recorded (P1-01).
+- [ ] Migration `0001` applied to the deployment (applied locally 2026-11-23). First-run Setup there uses the clearly fake name "Demo Makerspace": Phase 2 builds on it, and a real pilot later starts from a reset database (Phase 7).
 
 ---
 
@@ -326,3 +327,25 @@ Service tests call services with actors and explicit `now` (README §4.5). E2E u
 | Students forget passwords | An admin resets it with `scripts/set-password.ts`; sessions last 30 days, so resets are rare |
 | Someone registers with another person's email address | Joining needs the staff join link; staff see every member's name and email and can suspend |
 | Better Auth option names differ from this doc | Confirm against the installed version; the behaviour is the requirement |
+
+---
+
+## 11. Implementation notes (decided while building)
+
+| Decision | Detail | Date |
+|---|---|---|
+| Better Auth schema | The Better Auth CLI moved to the `auth` npm package (1.7.27, same version). Instead of downloading it, `src/db/auth-schema.ts` was produced by calling the generator bundled in `@better-auth/drizzle-adapter` (`generateDrizzleSchema`) with Cleared's options. The generated relations block was dropped: it uses Drizzle v1's `defineRelationsPart` (not in drizzle-orm 0.45) and Cleared doesn't use Better Auth's joins. On a Better Auth upgrade, regenerate the same way (or with `npx auth@<version> generate`) and write an additive migration | 2026-11-23 |
+| Mutation batches with raw SQL | drizzle-orm 0.45's `db.batch()` crashes on a raw ``db.run(sql`…`)`` that has bound parameters (it calls `.stmt.bind` on a query without a prepared statement). Guarded `INSERT … SELECT` / `UPDATE` statements therefore go through `batch(db, [...])` in `src/server/batch.ts`, which compiles each item and sends them with D1's own atomic `batch()`. Builder-only batches can keep using `db.batch()`. `Db` now includes `$client` (the D1 binding) | 2026-11-23 |
+| `action()` wrapper | `src/lib/server-action.ts`: `action(Schema, (actor, input, now, db) => service(...), { redirectTo? })`. Marked with a hidden symbol; `tests/unit/actions-wrapped.spec.ts` globs `src/actions/*.ts`. `parse()` moved to `src/server/domain/parse.ts` (pure) so services can validate their own input too; `src/lib/action.ts` re-exports it | 2026-11-23 |
+| New error codes | `SETUP_NOT_DONE` (409), `INVALID_JOIN_LINK` (404), `CANNOT_SUSPEND_SELF` (403) | 2026-11-23 |
+| Role/status guard | One guarded `UPDATE` handles role and status together: it re-checks inside the statement that the actor is still an active admin (or staff for member-only status changes), that staff only touch `member`-role users, and that at least one active admin remains. A refused change is explained by re-reading the rows (`FORBIDDEN` / `LAST_ADMIN` / `NOT_FOUND`). Under a race, the loser of "two admins demote/suspend each other" usually gets `FORBIDDEN` (it's no longer an admin) rather than `LAST_ADMIN` | 2026-11-23 |
+| Gates per page | Every signed-in page renders `<Gate>` (`src/components/gate.tsx`) with `area` set to `member`, `staff` or `admin`, which brings its own `<Suspense>`. Layouts don't re-render on client navigation, and dev's instant-navigation check reports session reads that a group-level `loading.tsx` doesn't cover (e.g. `/me/certifications` → `/me/account`). Layouts only render the header's account links and the console nav (admin-only items hidden for staff) | 2026-11-23 |
+| Session read order | `getSessionUser()` awaits `headers()` **before** creating the Better Auth instance: `betterAuth()` calls `Math.random()`, which dev's Cache Components only allows after a dynamic access | 2026-11-23 |
+| Help is public | `/help` moved to the `(public)` route group (same member-app frame, no account links, no session read) so it stays static and the deploy smoke test keeps its 200 | 2026-11-23 |
+| Better Auth hardening | `/update-user` disabled (Cleared never reads a renamed Better Auth user; Q1). A `databaseHooks.user.create.before` hook applies the display-name rule (1–80 chars, no control or bidi characters) to every sign-up, including direct API calls. Telemetry off. Its logger goes through `log()` with emails and URLs scrubbed: Better Auth's info log includes the email on a duplicate sign-up | 2026-11-23 |
+| After Setup | The new admin lands on `/console/settings` (join link), not `/machines` | 2026-11-23 |
+| Members list | Debounced search updates the URL (`?q=&role=&status=&cursor=`); the list is server-rendered with a keyset cursor on `(display_name COLLATE NOCASE, id)`; `%` and `_` are matched literally | 2026-11-23 |
+| Hydration-safe controls | Buttons that only work with JavaScript (sign out, suspend, regenerate, copy, save role) stay disabled until hydrated, and the role select is uncontrolled, so a tap before React loads isn't lost or reset | 2026-11-23 |
+| E2E structure | Playwright project `setup` runs `auth.spec.ts` first (Setup happens once per database) and saves the admin's signed-in state; the other specs depend on it. `join.spec.ts` is serial (it regenerates the shared join link). `run.sh` starts from an empty `.next-e2e`: a dev cache left by an interrupted run put every page into an "HMR hash mismatch" reload loop. Next 16 keeps the previous page mounted but hidden after a client navigation, so specs use role locators (which skip hidden elements) for controls whose labels repeat across pages | 2026-11-23 |
+| `set-password` | The `UPDATE` ends with `RETURNING id` and the script counts the returned rows (local `wrangler d1 execute` doesn't report `meta.changes`). It also deletes the user's sessions. Verified locally: the old password is refused, the temporary one signs in | 2026-11-23 |
+| `cookie` override | The production Worker returned 500 for every request with a session cookie: OpenNext's middleware adapter calls `cookie.default.parse`, and `cookie@1.x` has no CommonJS default. `package.json` `overrides` pins `cookie@0.7.2` for `@opennextjs/aws` (the fix `technologies.md` §16 anticipated). Found by running the built Worker in `workerd` (`wrangler dev` on a throwaway D1): `auth.spec.ts` and `join.spec.ts` then passed against it too | 2026-11-23 |

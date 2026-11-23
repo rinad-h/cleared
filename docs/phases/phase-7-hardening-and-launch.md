@@ -129,7 +129,7 @@
 
 | ID | Task |
 |---|---|
-| P7-76 | `scripts/set-password.ts <email> <temp-password> [--local]`: hashes locally with `hashPassword` (no Worker CPU), then renders the deploy config and runs the equivalent of `npm run remote -- d1 execute … --remote` (or the local D1 with `--local`) to update the `credential` account row (`technologies.md` §6.6). Prints a reminder to tell the member to change it |
+| P7-76 | **Moved to Phase 1 (P1-21) and built there.** Remaining here: test it on the deployment. `scripts/set-password.ts <email> <temp-password> [--local]`: hashes locally with `hashPassword` (no Worker CPU), then renders the deploy config and runs the equivalent of `npm run remote -- d1 execute … --remote` (or the local D1 with `--local`) to update the `credential` account row (`technologies.md` §6.6). Prints a reminder to tell the member to change it |
 | P7-77 | `scripts/make-admin.ts <email> [--local]`: the admin lock-out fix (runbook P7-86) as a script, so nobody hand-types SQL against the live database |
 
 ### 3.9 Runbook (`docs/runbook.md`)
