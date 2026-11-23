@@ -1,7 +1,7 @@
 import "server-only";
-import { asc, eq, isNull, ne, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, ne, sql } from "drizzle-orm";
 import type { Db } from "@/db";
-import { grants, machineRequirements, machineSessions, machines, rooms, settings } from "@/db/schema";
+import { faults, grants, machineRequirements, machineSessions, machines, rooms, settings } from "@/db/schema";
 import { requireMember } from "@/server/authz";
 import type { Actor } from "@/server/domain/actor";
 import { boardEtag, buildBoard, parseBoardEtag, type StatusBoard } from "@/server/domain/board";
@@ -35,7 +35,7 @@ export async function getStatusBoard(db: Db, actor: Actor, now: number, ifNoneMa
 
   await expireAllSessions(db, now);
 
-  const [settingsRows, roomRows, machineRows, requirementRows, sessionRows, grantRows] = await db.batch([
+  const [settingsRows, roomRows, machineRows, requirementRows, sessionRows, grantRows, issueRows] = await db.batch([
     db
       .select({ name: settings.name, timezone: settings.timezone, dataVersion: settings.dataVersion })
       .from(settings)
@@ -80,6 +80,10 @@ export async function getStatusBoard(db: Db, actor: Actor, now: number, ifNoneMa
       })
       .from(grants)
       .where(eq(grants.memberId, actor.memberId)),
+    db
+      .selectDistinct({ machineId: faults.machineId })
+      .from(faults)
+      .where(and(eq(faults.status, "open"), eq(faults.tookOutOfService, false))),
   ]);
 
   const s = settingsRows[0];
@@ -94,6 +98,7 @@ export async function getStatusBoard(db: Db, actor: Actor, now: number, ifNoneMa
     openSessions: sessionRows,
     viewer: viewerOf(actor),
     grants: grantRows,
+    issueMachineIds: new Set(issueRows.map((r) => r.machineId)),
   });
   return { notModified: false, etag: boardEtag(s.dataVersion, actor.memberId, actor.role, validUntil), board };
 }

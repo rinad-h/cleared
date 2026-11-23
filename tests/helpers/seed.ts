@@ -5,7 +5,7 @@
  *   const laser = await seed.machine({ room, requires: [cert], supervised: true });
  *   await seed.grant(member, cert, { by: staff, expiresAt: T0 + DAY })
  *   await seed.session(member, laser, { startedAt: T0, minutes: 60 })
- * Later phases add faults, …
+ * Faults and service records are made through the real services (Phase 5).
  */
 import { sql } from "drizzle-orm";
 import type { Db } from "@/db";
@@ -175,9 +175,26 @@ async function session(
 
 export const seed = { room, cert, machine, grant, session };
 
+/**
+ * Empty faults and the append-only service history. The triggers that block
+ * DELETE are dropped and recreated in the same batch (tests only).
+ */
+export function resetFaultsStatements(db: Db) {
+  return [
+    db.run(sql`DELETE FROM faults`),
+    db.run(sql`DROP TRIGGER IF EXISTS service_records_no_delete`),
+    // Corrections first: the self-reference is ON DELETE RESTRICT (checked per row).
+    db.run(sql`DELETE FROM service_records WHERE corrects_record_id IS NOT NULL`),
+    db.run(sql`DELETE FROM service_records`),
+    db.run(sql`CREATE TRIGGER service_records_no_delete BEFORE DELETE ON service_records
+      BEGIN SELECT RAISE(ABORT, 'service_records are append-only'); END`),
+  ] as const;
+}
+
 /** Empty the catalog tables (test files share one D1, so specs reset between tests). */
 export async function resetCatalog(db: Db = testDb()) {
   await db.batch([
+    ...resetFaultsStatements(db),
     db.run(sql`DELETE FROM machine_sessions`),
     db.run(sql`DELETE FROM grants`),
     db.run(sql`DELETE FROM machine_requirements`),

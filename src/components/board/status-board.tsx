@@ -182,8 +182,10 @@ export function MachineTile({ machine: m, tz, now }: { machine: BoardMachine; tz
   const name = `${m.name}, ${spokenState}, ${m.clearedForMe ? "you're cleared" : "not cleared"}`;
 
   return (
+    // The label includes a formatted time: server and browser time-zone data can differ (Phase 4 §11).
     <article
       aria-label={name}
+      suppressHydrationWarning
       data-state={m.state}
       className={cn("h-full space-y-2 rounded-lg border border-l-8 bg-card p-3", BAR[m.state])}
     >

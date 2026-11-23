@@ -36,6 +36,8 @@ const ITEMS: { href: string; label: string; icon: LucideIcon; adminOnly?: boolea
 type NavProps = {
   /** Admin-only sections are listed for admins only (hiding is not security; services check). */
   isAdmin?: boolean;
+  /** Open faults, shown next to "Faults" (as of the last full page load). */
+  faultCount?: number | null;
   onNavigate?: () => void;
 };
 
@@ -52,7 +54,7 @@ function NavListWithPathname(props: NavProps) {
   return <NavItems pathname={usePathname()} {...props} />;
 }
 
-function NavItems({ pathname, isAdmin = false, onNavigate }: NavProps & { pathname: string | null }) {
+function NavItems({ pathname, isAdmin = false, faultCount, onNavigate }: NavProps & { pathname: string | null }) {
   return (
     <nav aria-label="Staff console" className="flex flex-col gap-1 p-3">
       <ul className="flex flex-col gap-1">
@@ -75,6 +77,12 @@ function NavItems({ pathname, isAdmin = false, onNavigate }: NavProps & { pathna
               >
                 <Icon aria-hidden="true" className="size-4" />
                 {label}
+                {href === "/console/faults" && faultCount ? (
+                  <span className="ml-auto rounded-full bg-status-not-cleared px-2 text-xs text-status-not-cleared-foreground">
+                    {faultCount}
+                    <span className="sr-only"> open</span>
+                  </span>
+                ) : null}
               </Link>
             </li>
           );
@@ -94,12 +102,12 @@ function NavItems({ pathname, isAdmin = false, onNavigate }: NavProps & { pathna
 }
 
 /** Sidebar navigation (desktop). */
-export function ConsoleSidebar({ isAdmin }: { isAdmin?: boolean }) {
-  return <NavList isAdmin={isAdmin} />;
+export function ConsoleSidebar({ isAdmin, faultCount }: { isAdmin?: boolean; faultCount?: number | null }) {
+  return <NavList isAdmin={isAdmin} faultCount={faultCount} />;
 }
 
 /** Drawer navigation (phone). */
-export function ConsoleDrawer({ isAdmin }: { isAdmin?: boolean }) {
+export function ConsoleDrawer({ isAdmin, faultCount }: { isAdmin?: boolean; faultCount?: number | null }) {
   const [open, setOpen] = useState(false);
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -110,7 +118,7 @@ export function ConsoleDrawer({ isAdmin }: { isAdmin?: boolean }) {
       </SheetTrigger>
       <SheetContent side="left" className="w-64 bg-sidebar p-0" aria-describedby={undefined}>
         <SheetTitle className="px-6 pt-5 text-base">Staff console</SheetTitle>
-        <NavList isAdmin={isAdmin} onNavigate={() => setOpen(false)} />
+        <NavList isAdmin={isAdmin} faultCount={faultCount} onNavigate={() => setOpen(false)} />
       </SheetContent>
     </Sheet>
   );

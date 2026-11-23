@@ -36,6 +36,13 @@
       "when": 1795456547775,
       "tag": "0004_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1795458878243,
+      "tag": "0005_faults_service",
+      "breakpoints": true
     }
   ]
 }

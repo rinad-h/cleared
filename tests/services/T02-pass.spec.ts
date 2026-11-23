@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import { validGrantSql, isGrantValid } from "@/server/domain/grants";
 import type { Actor, MemberActor } from "@/server/domain/actor";
+import { setMachineOutOfService } from "@/server/services/machine-status";
 import { getMachineByToken } from "@/server/services/pass";
 import { actors, createMakerspace, resetIdentity } from "../helpers/actors";
 import { testDb } from "../helpers/db";
@@ -26,10 +27,13 @@ async function passFor(actor: Actor, token: string, now = T0) {
 }
 
 async function setOutOfService(machineId: string) {
-  // Phase 5 adds the real flow; re-run this case against it then.
-  await db().run(sql`UPDATE machines SET status = 'out_of_service', out_of_service_reason = 'maintenance',
-    status_note = 'New tube on order', expected_back_at = ${T0 + 3 * DAY}, status_changed_at = ${T0 - DAY}
-    WHERE id = ${machineId}`);
+  // Through the real staff flow (Phase 5, T07 #12).
+  await setMachineOutOfService(
+    db(),
+    staff,
+    { machineId, reason: "maintenance", note: "New tube on order", expectedBackAt: T0 + 3 * DAY },
+    T0 - DAY,
+  );
 }
 
 describe("T02 — pass logic", () => {

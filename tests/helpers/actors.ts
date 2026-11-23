@@ -11,6 +11,7 @@ import type { Actor, MemberActor, UserActor } from "@/server/domain/actor";
 import type { MemberStatus, Role } from "@/server/domain/enums";
 import { SETTINGS_ID } from "@/server/version";
 import { testDb } from "./db";
+import { resetFaultsStatements } from "./seed";
 import { T0 } from "./time";
 
 let counter = 0;
@@ -88,6 +89,7 @@ export async function createMakerspace({
 /** Empty the identity tables (test files share one D1, so specs reset between tests). */
 export async function resetIdentity(db: Db = testDb()) {
   await db.batch([
+    ...resetFaultsStatements(db),
     db.run(sql`DELETE FROM machine_sessions`),
     db.run(sql`DELETE FROM grants`),
     db.run(sql`UPDATE members SET status_changed_by_member_id = NULL`),

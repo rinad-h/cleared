@@ -25,7 +25,7 @@ export type MachineByToken =
         roomName: string;
         supervised: boolean;
         status: "available" | "out_of_service";
-        /** Filled from Phase 5 on; null while available. */
+        /** Null while available. */
         outOfService: { reason: OutOfServiceReason; since: number; note: string | null; expectedBackAt: number | null } | null;
       };
       viewer: { displayName: string; membership: "active" | "suspended" | "none"; role: Role | null };
@@ -50,6 +50,8 @@ export type MachineByToken =
         canStaffEnd: boolean;
         /** For staff ending someone else's session (no identity). */
         otherSessionId: string | null;
+        /** "Report a problem" (Phase 5): active members, any status but retired. */
+        canReportFault: boolean;
       };
     };
 
@@ -222,6 +224,7 @@ export async function getMachineByToken(
       canEnd: mine,
       canStaffEnd: isStaff && active !== null && !mine,
       otherSessionId: isStaff && active !== null && !mine ? active.id : null,
+      canReportFault: viewer.kind === "member" && viewer.status === "active",
     },
   };
 }
