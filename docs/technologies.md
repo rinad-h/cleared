@@ -573,7 +573,7 @@ Node.js 22+, npm, TypeScript (strict), ESLint (`eslint-config-next`), Wrangler 4
 | `test:e2e` | Playwright on an isolated D1 |
 | `db:generate` | drizzle-kit migration from `schema.ts` |
 | `db:migrate` / `db:migrate:remote` | Apply migrations locally / to the deployment |
-| `db:seed` | Clearly fake demo data (local) |
+| `db:seed` | Clearly fake demo data; `-- --reset --i-know` resets it (`scripts/reset-demo.sh` on the deployment; [`seed.md`](./seed.md)) |
 
 ### 11.3 Checks and deploys (local, no CI/CD)
 
@@ -786,6 +786,9 @@ Things that are known to matter for Next.js 16 + OpenNext + D1 + Better Auth on 
 | A Turbopack dev cache left by an interrupted E2E run can put every page into an "HMR hash mismatch" reload loop | `tests/e2e/run.sh` deletes `.next-e2e` before starting |
 | Production builds (no Cache Components) try to prerender any page that hasn't made a dynamic access yet; touching D1 (`getDb()`) first then fails the build ("Error occurred prerendering page") | Read the session (`getActor()`) or call `connection()` **before** `getDb()` in page data functions (`src/data/*`) |
 | Local `wrangler d1 execute --json` doesn't report `meta.changes` | Scripts that need a count use `RETURNING` and count rows (`scripts/set-password.ts`) |
+| `wrangler d1 execute --file` runs the whole file as **one transaction** (locally a D1 batch; remotely an import that rolls back on failure), but remotely returns no per-statement results | Multi-step data changes (the demo reset) go in one file; counts come from a separate `--command` query |
+| SQLite checks a **self-referencing** foreign key row by row on `DELETE` (`service_records.corrects_record_id`) | Delete the corrections before the originals (`scripts/lib/seed.mjs` reset) |
+| `wrangler d1 export --local` ignores `--persist-to` (always `.wrangler/state`) | The local demo reset backs up by copying the D1 files instead |
 | drizzle-kit can't put `COLLATE NOCASE` on a column, and SQLite names the **column** (`UNIQUE constraint failed: rooms.name`), not the index, when a `COLLATE NOCASE` unique index on that column is violated | Case-insensitive uniqueness is a unique index on `name COLLATE NOCASE`; `isUniqueViolation(err, …)` (`src/server/db-errors.ts`) matches the `table.column` form (and the index name, for pure expression indexes) |
 | A drizzle `db.batch()` of **reads** returns rows keyed by column name, so two selected columns with the same name (`machines.name`, `rooms.name`) overwrite each other and the values shift | Alias clashing columns in batched selects (``sql`${rooms.name}`.as("room_name")``); single `.get()` / `.all()` queries aren't affected |
 | An object with a `then` property is a thenable: `await`ing it calls `then` | Plans returned from async callbacks (e.g. `withMachineWrite`'s) never use a field called `then` (it's `guarded`) |

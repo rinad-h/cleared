@@ -205,7 +205,7 @@ Then:
 
 ```bash
 npm run db:migrate         # apply all migrations to the LOCAL D1 (in .wrangler/state)
-npm run db:seed            # optional: clearly fake demo data ("Demo Makerspace")
+npm run db:seed            # optional, after Setup: clearly fake demo data (docs/seed.md)
 npm run dev                # http://localhost:3000
 ```
 
@@ -409,6 +409,8 @@ Daily free limits reset at **00:00 UTC**. If you hit one, the app shows a "back 
 | `npm run db:generate` | New migration from `src/db/schema.ts` changes |
 | `npm run db:migrate` | Apply migrations to the local D1 |
 | `npm run db:seed` | Load fake demo data locally |
+| `npm run db:seed -- --reset --i-know` | Back up, clear and re-seed the local demo data (only when the makerspace name starts with "Demo"; [`seed.md`](./seed.md)) |
+| `bash scripts/reset-demo.sh --i-know` | The same on the deployment (backup to `~/cleared-backups/` first) |
 | `npm run cf-typegen` | Regenerate binding types after editing `wrangler.jsonc` |
 | `npm run config:render` | Write `wrangler.deploy.jsonc` from `wrangler.jsonc` + `cleared.config.json` |
 | `npm run remote -- <args>` | Run Wrangler against your deployment config (needed for remote D1 commands) |
