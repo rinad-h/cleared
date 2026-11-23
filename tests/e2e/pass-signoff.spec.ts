@@ -3,36 +3,12 @@
 // missing certification and its training link → staff signs them off → scan
 // again → CLEARED. Then staff revoke it → NOT CLEARED (revoked), and My
 // certifications shows it.
-import type { Browser, Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
-import { ADMIN_STATE, apiSignUp, uniqueEmail } from "./accounts";
+import { ADMIN_STATE, apiSignUp, joinAs, uniqueEmail } from "./accounts";
 
 const suffix = () => crypto.randomUUID().slice(0, 6);
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-/**
- * Join through the current join link. join.spec.ts may regenerate the link
- * while this runs, so a refused link is re-read once more.
- */
-async function joinAs(browser: Browser, admin: Page, baseURL: string, name: string, email: string) {
-  const context = await browser.newContext({ viewport: { width: 375, height: 740 } });
-  await apiSignUp(context, baseURL, name, email, "pass-signoff-pass-1");
-  const page = await context.newPage();
-  for (let attempt = 0; attempt < 3; attempt++) {
-    await admin.goto("/console/settings");
-    const joinPath = new URL(await admin.getByLabel("Current join link").inputValue()).pathname;
-    await page.goto(joinPath);
-    const join = page.getByRole("button", { name: "Join" });
-    const invalid = page.getByRole("heading", { level: 1, name: "This join link isn't valid any more" });
-    await expect(join.or(invalid)).toBeVisible();
-    if (await join.isVisible()) {
-      await join.click();
-      await expect(page).toHaveURL(/\/machines$/);
-      return { context, page };
-    }
-  }
-  throw new Error("could not join");
-}
 
 async function openMember(page: Page, email: string) {
   await page.goto("/console/members");
@@ -83,8 +59,8 @@ test("scan → NOT CLEARED → staff sign-off → CLEARED → revoke → NOT CLE
   // Two real accounts join; the admin promotes one to staff.
   const studentEmail = uniqueEmail("student");
   const staffEmail = uniqueEmail("staff");
-  const { context: studentContext, page: student } = await joinAs(browser, admin, baseURL!, "Demo Student 1", studentEmail);
-  const { context: staffContext, page: staff } = await joinAs(browser, admin, baseURL!, "Demo Staff 1", staffEmail);
+  const { context: studentContext, page: student } = await joinAs(browser, admin, baseURL!, "Demo Student 1", studentEmail, "pass-signoff-pass-1");
+  const { context: staffContext, page: staff } = await joinAs(browser, admin, baseURL!, "Demo Staff 1", staffEmail, "pass-signoff-pass-1");
   await openMember(admin, staffEmail);
   await admin.getByRole("combobox", { name: "Role", exact: true }).selectOption("staff");
   await admin.getByRole("button", { name: "Save role" }).click();

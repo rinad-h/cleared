@@ -24,8 +24,9 @@ test("sign up → setup → sign out → wrong password → sign in → change p
   await expect(page).toHaveURL(/\/sign-up\?next=%2Fmachines$/);
   await fillSignUp(page, ADMIN.name, ADMIN.email, ADMIN.firstPassword);
 
-  // No makerspace yet: the gate sends the first user to Setup.
-  await expect(page).toHaveURL(/\/setup$/);
+  // No makerspace yet: the gate sends the first user to Setup. The warm-up
+  // can't compile the signed-in board page, so its first visit compiles it here.
+  await expect(page).toHaveURL(/\/setup$/, { timeout: 30_000 });
   await page.getByLabel("Makerspace name").fill(MAKERSPACE_NAME);
   await expect(page.getByLabel("Time zone")).toHaveValue("America/Edmonton");
   await page.getByRole("button", { name: "Finish setup" }).click();
