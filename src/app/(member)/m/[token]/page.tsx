@@ -1,18 +1,23 @@
 import type { Metadata } from "next";
-import { HelpCircle, MapPin } from "lucide-react";
+import { HelpCircle } from "lucide-react";
+import { AutoRefresh } from "@/components/auto-refresh";
 import { Gate } from "@/components/gate";
+import { PassCard } from "@/components/pass/pass-card";
 import { getMachineByToken } from "@/data/pass";
 
 export const metadata: Metadata = { title: "Machine pass" };
 
 /**
- * The page a QR label opens. A hot path (every scan is a Worker request), so
- * it stays small: one `getMachineByToken` read. Signed-out visitors are sent
- * to sign-in by proxy.ts and come back here.
+ * The page a QR label opens: the viewer's pass for this machine (Phase 3 §6.1).
+ * A hot path (every scan is a Worker request), so it stays small: one batch of
+ * reads and a small tree. Non-members and suspended members get their own
+ * NOT CLEARED pass, so the gate only needs an account. Signed-out visitors are
+ * sent to sign-in by proxy.ts and come back here. Re-rendered every 60 s while
+ * visible.
  */
 export default function MachinePassPage({ params }: PageProps<"/m/[token]">) {
   return (
-    <Gate area="member">
+    <Gate area="signed-in">
       <MachinePass params={params} />
     </Gate>
   );
@@ -36,23 +41,10 @@ async function MachinePass({ params }: Pick<PageProps<"/m/[token]">, "params">) 
     );
   }
 
-  const { machine, makerspace } = result;
   return (
-    <section aria-labelledby="page-title" className="mx-auto max-w-md space-y-4 py-2">
-      <p className="text-sm text-muted-foreground">{makerspace.name}</p>
-      <h1 id="page-title" className="text-3xl font-semibold tracking-tight break-words">
-        {machine.name}
-      </h1>
-      <p className="flex items-center gap-1.5 text-muted-foreground">
-        <MapPin aria-hidden="true" className="size-4" />
-        {machine.roomName}
-      </p>
-      <div className="rounded-lg border px-4 py-5" aria-live="polite">
-        <p className="font-medium">Your pass for this machine</p>
-        <p className="text-sm text-muted-foreground">
-          Pass coming in Phase 3: it will show whether you&apos;re cleared to use this machine.
-        </p>
-      </div>
+    <section aria-labelledby="page-title" className="mx-auto max-w-md py-2">
+      <PassCard data={result} />
+      <AutoRefresh seconds={60} />
     </section>
   );
 }

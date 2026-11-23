@@ -7,7 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getMe } from "@/data/me";
 
-export type GateArea = "member" | "staff" | "admin";
+/**
+ * `signed-in` only needs an account (the machine pass, which shows non-members
+ * and suspended members their own NOT CLEARED pass instead of a gate card).
+ */
+export type GateArea = "signed-in" | "member" | "staff" | "admin";
 
 /**
  * Page-level access gate (Phase 1 §6), rendered by every signed-in page. Pages
@@ -47,6 +51,7 @@ async function GateCheck({ area, children }: { area: GateArea; children: ReactNo
   const me = await getMe();
   if (!me.user) redirect("/sign-in");
   if (!me.setupComplete) redirect("/setup");
+  if (area === "signed-in") return children;
   if (!me.membership) return <NoMembershipGate email={me.user.email} />;
   if (me.membership.status !== "active") return <SuspendedGate />;
   if (area === "staff" && me.membership.role === "member") return <RoleGate admins={false} />;

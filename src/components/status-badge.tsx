@@ -57,7 +57,8 @@ export function StatusBadge({
   status: Status;
   /** Replaces the default word, e.g. "In use · est. free 3:10 pm". Must still name the status. */
   label?: string;
-  size?: "default" | "lg";
+  /** `block`: the machine pass's full-width status block, readable from 1–2 m. */
+  size?: "default" | "lg" | "block";
   className?: string;
 }) {
   const { label: defaultLabel, icon: Icon, className: tone } = STATUSES[status];
@@ -65,14 +66,19 @@ export function StatusBadge({
     <span
       data-status={status}
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full font-medium whitespace-nowrap",
-        size === "lg" ? "px-4 py-2 text-lg" : "px-2.5 py-0.5 text-sm",
+        size === "block"
+          ? "flex w-full items-center gap-3 rounded-xl px-4 py-6 text-[clamp(1.5rem,8vw,2.75rem)] leading-none font-extrabold tracking-tight uppercase sm:gap-4 sm:px-5"
+          : "inline-flex items-center gap-1.5 rounded-full font-medium whitespace-nowrap",
+        size === "lg" ? "px-4 py-2 text-lg" : size === "default" ? "px-2.5 py-0.5 text-sm" : null,
         tone,
         className,
       )}
     >
-      <Icon aria-hidden="true" className={size === "lg" ? "size-6" : "size-4"} />
-      {label ?? defaultLabel}
+      <Icon
+        aria-hidden="true"
+        className={size === "block" ? "size-10 shrink-0 sm:size-12" : size === "lg" ? "size-6" : "size-4"}
+      />
+      {size === "block" ? <span className="min-w-0 [overflow-wrap:anywhere]">{label ?? defaultLabel}</span> : (label ?? defaultLabel)}
     </span>
   );
 }
