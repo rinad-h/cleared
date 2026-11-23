@@ -59,17 +59,9 @@ test("root redirects temporarily (307) to the machine list, which asks a signed-
   await expect(page).toHaveURL(/\/sign-in\?next=%2Fmachines$/);
 });
 
-test("spike API routes are 404 outside development (no ENABLE_SPIKES)", async ({ request }) => {
-  for (const path of ["/api/spike/hash", "/api/spike/rate-limit"]) {
-    expect((await request.get(path)).status(), path).toBe(404);
-  }
-});
-
-test("spike pages render the not-found page outside development (no ENABLE_SPIKES)", async ({ page }) => {
-  for (const path of ["/spike/pass", "/spike/board"]) {
-    await page.goto(path);
-    await expect(page.getByRole("heading", { name: "Page not found" }), path).toBeVisible();
-    await expect(page.getByText("Spike S2"), path).toHaveCount(0);
+test("the Phase 0 spike routes are gone", async ({ request }) => {
+  for (const path of ["/api/spike/hash", "/api/spike/rate-limit", "/spike/pass", "/spike/board"]) {
+    expect((await request.get(path, { maxRedirects: 0 })).status(), path).toBe(404);
   }
 });
 

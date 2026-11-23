@@ -21,7 +21,7 @@ Cleared is a Next.js 16 app on Cloudflare Workers Free (OpenNext) + D1 + Better 
 11. **`prefetch={false}`** on member-app links and long lists. Each prefetch is a billable Worker request.
 12. **Labels and join URLs are built from `PUBLIC_BASE_URL` only**, never from the request host.
 13. **Never log** emails, names, passwords, tokens, cookies, URLs or free text. Use `log(level, event, fields, err?)` from `src/server/log.ts` with ids, counts and codes; pass unexpected errors as `err` (never `err.message`).
-14. **No auth bypass, ever.** Tests call services with an `actor`; E2E signs up real accounts. `ENABLE_SPIKES` is only ever a temporary Worker secret, never in `wrangler.jsonc`.
+14. **No auth bypass, ever.** Tests call services with an `actor`; E2E signs up real accounts. No header, env var or hard-coded id makes anyone a user (`npm run check` still refuses `ENABLE_SPIKES` in `wrangler.jsonc`).
 15. **Secrets live in `.dev.vars` and Worker secrets**, never in `.env*` (OpenNext can embed `.env*` into the bundle).
 16. **The repository stays generic.** `wrangler.jsonc` keeps its `<placeholders>`; deployment values (subdomain, D1 IDs) live in git-ignored `cleared.config.json` and are rendered into `wrangler.deploy.jsonc`. Never commit personal names, emails, URLs, accounts or IDs. Remote D1 commands go through `npm run remote -- …`.
 17. **Status is colour + icon + word**: always `<StatusBadge>`, using the status tokens in `globals.css`.
@@ -38,10 +38,6 @@ npm run db:generate    # after editing src/db/schema.ts, then review the SQL
 npm run db:migrate     # apply migrations locally
 npm run preview        # OpenNext build in real workerd (catches runtime issues)
 ```
-
-## Temporary code
-
-`src/app/spike/`, `src/app/api/spike/`, `src/server/spikes/` and `scripts/spike-load.mjs` are the Phase 0 platform spikes (dev only; on the deployment only while the `ENABLE_SPIKES` Worker secret is `1`). Delete them once the results are recorded in `docs/phases/phase-0-foundation.md` §7.
 
 <!-- BEGIN:nextjs-agent-rules -->
 

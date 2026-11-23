@@ -195,8 +195,8 @@ docs/runbook.md (stub)   docs/setup-and-deploy.md (verified)
 |---|---|---|
 | Subdomain chosen and recorded privately | yes/no | |
 | **S1:** sign-up/sign-in failures out of 5–10; median `cpuTime`; hasher | **0/10** sign-in failures (sequential, build `01e7dc3`). Bursts of 50: 14/50 sign-ups and 30/50 sign-ins answered 503 (presumed Error 1102; not confirmed in logs). Earlier S1 run: 76–104 ms CPU. Median `cpuTime` for this run not captured. **Hasher:** Better Auth's default, which on Workers already resolves to native `node:crypto` scrypt (`@better-auth/utils` `workerd` export), so no faster option exists. **Decision (project owner):** keep it, add a client retry on 503 for sign-up/sign-in, watch for 1102s; Google sign-in if real users hit failures (Phase 1 P1-01, D2) | 2026-11-23 |
-| **S2:** pass-like and board-like p99 `cpuTime`; render strategy | | |
-| S3: rate-limit binding works on Free? | | |
+| **S2:** pass-like and board-like p99 `cpuTime`; render strategy | Not measured on the spike pages; superseded by the Phase 7 CPU audit of the real pages (P7-30…32). Spike code deleted in Phase 7 | 2026-11-23 |
+| S3: rate-limit binding works on Free? | Deploys on Free (the binding has been in `wrangler.jsonc` since Phase 0); whether it limits is Phase 6 P6-40 on the deployment. Spike code deleted in Phase 7 | 2026-11-23 |
 
 ### 7.1 Implementation notes (decided while building)
 
