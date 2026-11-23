@@ -2,6 +2,7 @@
 
 import { action } from "@/lib/server-action";
 import { ReportFaultInput } from "@/lib/schemas/faults";
+import { getRateLimiter } from "@/server/rate-limit";
 import * as faults from "@/server/services/faults";
 
 /**
@@ -10,6 +11,6 @@ import * as faults from "@/server/services/faults";
  * Idempotent on `clientRequestId`.
  */
 export const reportFault = action(ReportFaultInput, async (actor, input, now, db) => {
-  const { faultId, tookOutOfService } = await faults.reportFault(db, actor, input, now);
+  const { faultId, tookOutOfService } = await faults.reportFault(db, actor, input, now, { limiter: getRateLimiter() });
   return { faultId, tookOutOfService };
 });

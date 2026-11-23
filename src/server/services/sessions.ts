@@ -5,6 +5,7 @@ import { certifications, grants, machineRequirements, machineSessions, machines,
 import { MemberDetailInput } from "@/lib/schemas/grants";
 import { EndSessionInput, ExtendSessionInput, StartSessionInput } from "@/lib/schemas/sessions";
 import { requireMember, requireRole } from "@/server/authz";
+import { enforceRateLimit, type RateLimitOptions } from "@/server/rate-limit";
 import { batch } from "@/server/batch";
 import { isUniqueViolation } from "@/server/db-errors";
 import type { Actor, MemberActor } from "@/server/domain/actor";
@@ -138,10 +139,11 @@ export async function startSession(
   actor: Actor,
   rawInput: StartSessionInput,
   now: number,
-  options?: MachineWriteOptions,
+  options?: MachineWriteOptions & RateLimitOptions,
 ): Promise<{ session: MachineSession; created: boolean }> {
   requireMember(actor);
   const input = parse(StartSessionInput, rawInput);
+  await enforceRateLimit(options?.limiter, `start:${actor.memberId}`, now);
 
   const replay = async () => {
     const existing = await db

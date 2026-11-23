@@ -236,9 +236,6 @@ describe("T08 — service log", () => {
     await expect(log({}, T0 + 3 * HOUR)).rejects.toMatchObject({ code: "MACHINE_RETIRED" });
   });
 
-  it("checkupId is not supported yet", async () => {
-    await expect(log({ checkupId: crypto.randomUUID() })).rejects.toMatchObject({ code: "NOT_SUPPORTED_YET" });
-  });
 
   it("machine detail: status, open faults, blocking ids, sessions and the first history page", async () => {
     const past = await seed.session(student, saw, { startedAt: T0 - 2 * HOUR, minutes: 30, endedAt: T0 - 100 * MIN });

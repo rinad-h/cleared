@@ -186,6 +186,7 @@ export function resetFaultsStatements(db: Db) {
     // Corrections first: the self-reference is ON DELETE RESTRICT (checked per row).
     db.run(sql`DELETE FROM service_records WHERE corrects_record_id IS NOT NULL`),
     db.run(sql`DELETE FROM service_records`),
+    db.run(sql`DELETE FROM checkups`),
     db.run(sql`CREATE TRIGGER service_records_no_delete BEFORE DELETE ON service_records
       BEGIN SELECT RAISE(ABORT, 'service_records are append-only'); END`),
   ] as const;

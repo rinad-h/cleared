@@ -4,6 +4,7 @@ import type { Db } from "@/db";
 import { members, settings, user } from "@/db/schema";
 import { JoinInput } from "@/lib/schemas/identity";
 import { requireUser } from "@/server/authz";
+import { enforceRateLimit, type RateLimitOptions } from "@/server/rate-limit";
 import type { Actor } from "@/server/domain/actor";
 import { ServiceError } from "@/server/domain/errors";
 import { toDisplayName } from "@/server/domain/identity";
@@ -46,9 +47,11 @@ export async function joinMakerspace(
   actor: Actor,
   rawInput: JoinInput,
   now: number,
+  options?: RateLimitOptions,
 ): Promise<{ memberId: string; joined: boolean }> {
   requireUser(actor);
   const input = parse(JoinInput, rawInput);
+  await enforceRateLimit(options?.limiter, `join:${actor.userId}`, now);
   if (actor.kind === "member") return { memberId: actor.memberId, joined: false };
 
   const row = await readJoinSettings(db);

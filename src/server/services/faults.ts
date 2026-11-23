@@ -4,6 +4,7 @@ import type { Db } from "@/db";
 import { faults, machines, members, rooms } from "@/db/schema";
 import { FaultQueueInput, ReportFaultInput } from "@/lib/schemas/faults";
 import { requireMember, requireRole } from "@/server/authz";
+import { enforceRateLimit, type RateLimitOptions } from "@/server/rate-limit";
 import { isUniqueViolation } from "@/server/db-errors";
 import type { Actor } from "@/server/domain/actor";
 import type { MachineStatus } from "@/server/domain/enums";
@@ -43,10 +44,11 @@ export async function reportFault(
   actor: Actor,
   rawInput: ReportFaultInput,
   now: number,
-  options?: MachineWriteOptions,
+  options?: MachineWriteOptions & RateLimitOptions,
 ): Promise<{ faultId: string; tookOutOfService: boolean; created: boolean }> {
   requireMember(actor);
   const input = parse(ReportFaultInput, rawInput);
+  await enforceRateLimit(options?.limiter, `fault:${actor.memberId}`, now);
 
   const replay = async () => {
     const existing = await db

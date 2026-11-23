@@ -13,10 +13,15 @@ export const logServiceRecord = action(
   LogServiceInput,
   async (actor, input, now, db) => {
     const result = await records.logServiceRecord(db, actor, input, now);
-    return { ...result, machineId: input.machineId, correction: Boolean(input.correctsRecordId) };
+    return {
+      ...result,
+      machineId: input.machineId,
+      correction: Boolean(input.correctsRecordId),
+      checkup: Boolean(input.checkupId),
+    };
   },
   {
     redirectTo: (r) =>
-      `/console/machines/${r.machineId}?logged=${r.correction ? "correction" : r.machineStatus}`,
+      `/console/machines/${r.machineId}?logged=${r.correction ? "correction" : r.checkup ? "checkup" : r.machineStatus}`,
   },
 );

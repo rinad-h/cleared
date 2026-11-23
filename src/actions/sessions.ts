@@ -2,6 +2,7 @@
 
 import { action } from "@/lib/server-action";
 import { EndSessionInput, ExtendSessionInput, StartSessionInput } from "@/lib/schemas/sessions";
+import { getRateLimiter } from "@/server/rate-limit";
 import * as sessions from "@/server/services/sessions";
 
 /**
@@ -11,7 +12,7 @@ import * as sessions from "@/server/services/sessions";
 
 /** Idempotent on `clientRequestId`: a replay returns the same session with `created: false`. */
 export const startSession = action(StartSessionInput, async (actor, input, now, db) => {
-  const { session, created } = await sessions.startSession(db, actor, input, now);
+  const { session, created } = await sessions.startSession(db, actor, input, now, { limiter: getRateLimiter() });
   return { sessionId: session.id, expectedEndAt: session.expectedEndAt, created };
 });
 
