@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { Toaster } from "sonner";
 import { HeaderAccount } from "@/components/layouts/header-account";
 import { MemberShell } from "@/components/layouts/member-shell";
 
@@ -16,6 +17,8 @@ export default function MemberLayout({ children }: LayoutProps<"/">) {
       }
     >
       {children}
+      {/* Above the bottom tab bar on phones. */}
+      <Toaster position="top-center" richColors={false} closeButton />
     </MemberShell>
   );
 }
