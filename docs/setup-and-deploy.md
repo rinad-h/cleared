@@ -411,6 +411,8 @@ Daily free limits reset at **00:00 UTC**. If you hit one, the app shows a "back 
 | `npm run db:seed` | Load fake demo data locally |
 | `npm run db:seed -- --reset --i-know` | Back up, clear and re-seed the local demo data (only when the makerspace name starts with "Demo"; [`seed.md`](./seed.md)) |
 | `bash scripts/reset-demo.sh --i-know` | The same on the deployment (backup to `~/cleared-backups/` first) |
+| `npx tsx scripts/set-password.ts <email> <temp-password> [--local]` | Set a temporary password for a member (no email reset) |
+| `npx tsx scripts/make-admin.ts <email> [--local]` | Make a member an active admin (admin lock-out) |
 | `npm run cf-typegen` | Regenerate binding types after editing `wrangler.jsonc` |
 | `npm run config:render` | Write `wrangler.deploy.jsonc` from `wrangler.jsonc` + `cleared.config.json` |
 | `npm run remote -- <args>` | Run Wrangler against your deployment config (needed for remote D1 commands) |
