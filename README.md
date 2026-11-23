@@ -6,7 +6,7 @@ It's one Next.js 16 app deployed to **Cloudflare Workers Free** with **D1** and 
 
 Cleared is a project for **ENTI 333, Fall 2026**.
 
-> **Status:** early development. Built so far: the foundation (Phase 0), sign-in, setup, join links and roles (Phase 1), and the catalog: rooms, certifications, machines and printable QR labels (Phase 2). Features arrive phase by phase (see [`docs/phases/`](docs/phases/README.md)).
+> **Status:** early development. Built so far: the foundation (Phase 0), sign-in, setup, join links and roles (Phase 1), the catalog: rooms, certifications, machines and printable QR labels (Phase 2), and certifications with the machine pass: sign-off, revocation, expiry, the pass page and My certifications (Phase 3). Features arrive phase by phase (see [`docs/phases/`](docs/phases/README.md)).
 
 ## Quick start (local)
 

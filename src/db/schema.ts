@@ -210,3 +210,45 @@ export const machineRequirements = sqliteTable(
     index("machine_requirements_cert").on(t.certificationId),
   ],
 );
+
+/* ------------------------------------------------------------- Phase 3 */
+
+/**
+ * Certification sign-offs (FR-07). Never deleted: revocation fills the three
+ * `revoked_*` columns once, and a re-grant is a new row, so the rows are the
+ * history (FR-18). Nobody signs themselves off (service check + CHECK backstop).
+ * `client_request_id` makes a double-tapped sign-off create one row.
+ */
+export const grants = sqliteTable(
+  "grants",
+  {
+    id: text("id").primaryKey(),
+    memberId: text("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "restrict" }),
+    certificationId: text("certification_id")
+      .notNull()
+      .references(() => certifications.id, { onDelete: "restrict" }),
+    grantedByMemberId: text("granted_by_member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "restrict" }),
+    grantedAt: integer("granted_at").notNull(),
+    expiresAt: integer("expires_at"),
+    clientRequestId: text("client_request_id").notNull().unique(),
+    revokedAt: integer("revoked_at"),
+    revokedByMemberId: text("revoked_by_member_id").references(() => members.id, { onDelete: "restrict" }),
+    revokeReason: text("revoke_reason"),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    check(
+      "grants_revoke_reason_length",
+      sql`${t.revokeReason} IS NULL OR length(${t.revokeReason}) BETWEEN 3 AND 300`,
+    ),
+    check("grants_no_self_sign_off", sql`${t.grantedByMemberId} <> ${t.memberId}`),
+    check("grants_revoked_by_consistent", sql`(${t.revokedAt} IS NULL) = (${t.revokedByMemberId} IS NULL)`),
+    check("grants_revoke_reason_consistent", sql`(${t.revokedAt} IS NULL) = (${t.revokeReason} IS NULL)`),
+    check("grants_expiry_after_grant", sql`${t.expiresAt} IS NULL OR ${t.expiresAt} > ${t.grantedAt}`),
+    index("grants_member_cert").on(t.memberId, t.certificationId),
+  ],
+);

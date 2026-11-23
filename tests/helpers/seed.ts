@@ -3,11 +3,13 @@
  *   const room = await seed.room();
  *   const cert = await seed.cert({ validityMonths: 12 });
  *   const laser = await seed.machine({ room, requires: [cert], supervised: true });
- * Later phases add `seed.grant(member, cert, { expiresAt })`, …
+ *   await seed.grant(member, cert, { by: staff, expiresAt: T0 + DAY })
+ * Later phases add sessions, faults, …
  */
 import { sql } from "drizzle-orm";
 import type { Db } from "@/db";
-import { certifications, machineRequirements, machines, rooms } from "@/db/schema";
+import { certifications, grants, machineRequirements, machines, rooms } from "@/db/schema";
+import type { MemberActor } from "@/server/domain/actor";
 import { newToken } from "@/server/domain/identity";
 import { testDb } from "./db";
 import { T0 } from "./time";
@@ -100,11 +102,54 @@ async function machine({
   } satisfies SeededMachine;
 }
 
-export const seed = { room, cert, machine };
+/**
+ * A grant written straight to the table. `by` defaults to a fresh staff
+ * member (nobody signs themselves off: the CHECK would refuse it).
+ */
+async function grant(
+  member: Pick<MemberActor, "memberId">,
+  certification: { id: string },
+  {
+    by,
+    grantedAt = T0,
+    expiresAt = null,
+    revokedAt = null,
+    revokedBy,
+    revokeReason = "Seeded revoke",
+    db = testDb(),
+  }: {
+    by: Pick<MemberActor, "memberId">;
+    grantedAt?: number;
+    expiresAt?: number | null;
+    revokedAt?: number | null;
+    revokedBy?: Pick<MemberActor, "memberId">;
+    revokeReason?: string;
+    db?: Db;
+  },
+) {
+  const row = {
+    id: crypto.randomUUID(),
+    memberId: member.memberId,
+    certificationId: certification.id,
+    grantedByMemberId: by.memberId,
+    grantedAt,
+    expiresAt,
+    clientRequestId: crypto.randomUUID(),
+    revokedAt,
+    revokedByMemberId: revokedAt === null ? null : (revokedBy ?? by).memberId,
+    revokeReason: revokedAt === null ? null : revokeReason,
+    createdAt: grantedAt,
+  };
+  await db.insert(grants).values(row);
+  return row;
+}
+
+export const seed = { room, cert, machine, grant };
 
 /** Empty the catalog tables (test files share one D1, so specs reset between tests). */
 export async function resetCatalog(db: Db = testDb()) {
   await db.batch([
+    db.run(sql`DELETE FROM grants`),
     db.run(sql`DELETE FROM machine_requirements`),
     db.run(sql`DELETE FROM machines`),
     db.run(sql`DELETE FROM certifications`),

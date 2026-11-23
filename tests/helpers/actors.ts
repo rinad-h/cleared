@@ -88,6 +88,7 @@ export async function createMakerspace({
 /** Empty the identity tables (test files share one D1, so specs reset between tests). */
 export async function resetIdentity(db: Db = testDb()) {
   await db.batch([
+    db.run(sql`DELETE FROM grants`),
     db.run(sql`UPDATE members SET status_changed_by_member_id = NULL`),
     db.run(sql`DELETE FROM members`),
     db.run(sql`DELETE FROM settings`),

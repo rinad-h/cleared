@@ -5,7 +5,8 @@ import { ChevronLeft } from "lucide-react";
 import { Gate } from "@/components/gate";
 import { RoleForm, StatusForm } from "@/components/members/member-forms";
 import { MemberStatusLabel, ROLE_LABELS } from "@/components/members/member-status";
-import { getMember } from "@/data/members";
+import { MemberCertifications } from "@/components/grants/member-certifications";
+import { getMemberDetail } from "@/data/members";
 import { getMakerspace } from "@/data/me";
 import { getActor } from "@/lib/actor";
 import { can, canChangeStatusOf } from "@/lib/permissions";
@@ -30,7 +31,7 @@ async function MemberDetail({ params }: Pick<PageProps<"/console/members/[id]">,
   const [actor, makerspace] = await Promise.all([getActor(), getMakerspace()]);
   let member;
   try {
-    member = await getMember(id);
+    member = await getMemberDetail(id);
   } catch (err) {
     if (err instanceof ServiceError && (err.code === "NOT_FOUND" || err.code === "VALIDATION_FAILED")) notFound();
     throw err;
@@ -38,6 +39,7 @@ async function MemberDetail({ params }: Pick<PageProps<"/console/members/[id]">,
   const timeZone = makerspace?.timezone ?? "UTC";
   const showRole = can(actor, "changeRoles");
   const showStatus = !member.isSelf && canChangeStatusOf(actor, member.role);
+  const mayGrant = !member.isSelf && can(actor, "signOff");
 
   return (
     <section aria-labelledby="page-title" className="max-w-2xl space-y-8">
@@ -80,6 +82,15 @@ async function MemberDetail({ params }: Pick<PageProps<"/console/members/[id]">,
         <dt className="text-muted-foreground">Joined</dt>
         <dd>{formatDate(member.joinedAt, timeZone)}</dd>
       </dl>
+
+      <MemberCertifications
+        member={member}
+        certifications={member.certifications}
+        history={member.history}
+        canSignOff={mayGrant && member.status === "active"}
+        canRevoke={mayGrant}
+        timeZone={timeZone}
+      />
 
       {showRole ? (
         <div className="space-y-3">

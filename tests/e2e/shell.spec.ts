@@ -31,6 +31,10 @@ async function expectNoHorizontalScroll(page: Page) {
 }
 
 async function expectAxeClean(page: Page) {
+  // A button fading from disabled (50% opacity) to enabled after hydration
+  // can be sampled mid-transition and fail colour contrast under load.
+  // Settle every transition so axe sees final colours.
+  await page.addStyleTag({ content: "*, *::before, *::after { transition: none !important; animation: none !important; }" });
   const results = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
     .analyze();

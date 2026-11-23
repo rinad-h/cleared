@@ -392,7 +392,7 @@ Service tests in `tests/services/`, Vitest + `@cloudflare/vitest-plugin`, callin
 
 ## 8. Exit criteria
 
-- [ ] T02 and T03 green (with the T02 out-of-service case marked to re-run against the real flow in Phase 5).
+- [x] T02 and T03 green (with the T02 out-of-service case marked to re-run against the real flow in Phase 5). 2026-11-23: `npm run check` and `npm run test:e2e` pass locally, including `pass-signoff.spec.ts` (P3-43).
 - [ ] Demo steps 4–6 work on the deployed app with a phone.
 - [ ] Sign-off timed at ≤ 30 s.
 - [ ] Pass page `cpuTime` recorded on the deployment.
@@ -411,7 +411,7 @@ Service tests in `tests/services/`, Vitest + `@cloudflare/vitest-plugin`, callin
 | D5 | The missing-cert `state` (`never`/`expired`/`revoked`) is shown to the member | Decided: helps them act; it's their own data |
 | D6 | The pass refreshes with `router.refresh()` every 60 s (`<AutoRefresh>`), not a JSON poll | Decided: short-lived page; the board and console poll JSON instead |
 | Q1 | Should staff be able to set a custom expiry at sign-off (shorter than the validity)? PRD 5.2 says "with optional expiry", FR-07 gives the formula. Proposed: formula only in the MVP | Proposed |
-| Q2 | Should a pass show "expiring soon" (≤ 30 days) as a warning on CLEARED? Proposed: yes, as small text, without changing the status | Proposed |
+| Q2 | Should a pass show "expiring soon" (≤ 30 days) as a warning on CLEARED? Proposed: yes, as small text, without changing the status | Built as proposed (2026-11-23): "Expires in N days. Ask staff to renew it." under the expiry |
 | Q3 | Should expired certifications be renewable by sign-off without re-training? That's a process question for the interviews (PRD Stage A) | Open |
 
 ## 10. Risks
@@ -421,3 +421,24 @@ Service tests in `tests/services/`, Vitest + `@cloudflare/vitest-plugin`, callin
 | The pass is wrong because of time-zone or clock errors | Server UTC only; `now` passed to services; boundary tests at ±1 ms |
 | Screenshot passes | Live clock + name (mitigation only, PRD 5.4) |
 | Pass page slow or over the CPU limit | Server-rendered on every scan: one batched read, small tree, `cpuTime` check (P3-53); first-load JS ≤ 250 KB gz; measured again in Phase 7 |
+
+---
+
+## 11. Implementation notes (decided while building)
+
+| Decision | Detail | Date |
+|---|---|---|
+| Schemas live in `src/lib/schemas/grants.ts` | Not `src/server/schemas/` (same reason as Phase 2: the client dialogs import them). Result types are exported from the services (`MachineByToken`, `CertificationRecord`, `GrantHistoryItem`) and imported with `import type` | 2026-11-23 |
+| New error codes | `SELF_SIGN_OFF`, `SELF_REVOKE` (403), `MEMBER_SUSPENDED`, `ALREADY_REVOKED`, `IDEMPOTENCY_MISMATCH` (409) | 2026-11-23 |
+| `getMachineByToken` moved | From `services/machines.ts` to `services/pass.ts`, and it now takes `now`. `loadPassContext` sends three reads (machine + room + settings, requirements, the viewer's grants) as one `db.batch()`, each keyed on `qr_token` through subqueries, so there's one round trip and no read-then-read | 2026-11-23 |
+| Duplicate column names in a D1 batch | A `db.batch()` read returns rows keyed by column name, so `machines.name`, `rooms.name` and `settings.name` overwrote each other. The pass query aliases them (`room_name`, `makerspace_name`, `makerspace_timezone`). Recorded in `technologies.md` §16 | 2026-11-23 |
+| Times in the pass result | The service returns UTC ms (`serverNow`, expiries); the page turns `serverNow` into an ISO string for `<LiveClock>`. All other formatting happens in Server Components (`src/lib/format.ts`) | 2026-11-23 |
+| Sign-off insert | Pre-reads the target and certification for clear errors, then one guarded `INSERT … SELECT … WHERE … ON CONFLICT(client_request_id) DO NOTHING` re-checks inside the statement that the target is active, the certification active **with the same `validity_months`** used for the expiry, and the actor still active staff. The `data_version` bump is guarded by `EXISTS (the new grant id)`, so a replay or a lost race doesn't bump. A replay must match member, certification **and** granted-by, else `IDEMPOTENCY_MISMATCH` | 2026-11-23 |
+| Revoke revokes the certification | `revokeGrant({ grantId })` also revokes the member's **other still-valid grants for the same certification**. Early renewal (sign-off while expiring soon) leaves two valid rows; revoking only one would leave the member CLEARED. Expired rows are left alone. Same reason and time on every row it touches | 2026-11-23 |
+| `<Gate area="signed-in">` | The pass page needs an account only: non-members and suspended members see their own red NOT CLEARED pass with the reason (§4.3 rows 2–3) instead of the generic gate card | 2026-11-23 |
+| Pass status block | `<StatusBadge size="block">` (AGENTS.md rule 17). The word scales with the viewport (`clamp(1.5rem, 8vw, 2.75rem)`): 44 px from about 550 px wide, about 30 px on a 375 px phone, so "SUPERVISION REQUIRED" still fits at 320 px. Icon 40 px (48 px from `sm`) | 2026-11-23 |
+| Live clock | Initial render uses the server's time; after mount it measures `serverNow − Date.now()` and ticks every second. The `<time>` element has `suppressHydrationWarning` because server and browser ICU data can format the same instant slightly differently. Pulse is `motion-safe` only | 2026-11-23 |
+| Certification states | One rule (`certState()` in `src/server/domain/grants.ts`) for the pass's missing list, My certifications and the member page: the best valid grant gives valid / expiring soon (≤ 30 days); otherwise the latest grant gives expired / revoked; none otherwise. Inactive certifications appear only if the member ever held one | 2026-11-23 |
+| Member page controls | Sign off on rows that aren't valid ("Renew" when expiring soon or expired), plus a general Sign off button that pre-selects the last certification used in this browser (`localStorage`). Revoke on valid / expiring-soon rows. All hidden on your own page; Sign off also hidden for suspended members (the services refuse both anyway) | 2026-11-23 |
+| Revocation reason is shown to the member | My certifications shows the reason staff typed (§5.2 includes it; it's about the member's own record). The pass shows only "Revoked" | 2026-11-23 |
+
