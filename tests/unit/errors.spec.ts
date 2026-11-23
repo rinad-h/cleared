@@ -214,6 +214,22 @@ describe("parse()", () => {
   });
 });
 
+describe("error details", () => {
+  it("carries safe details (CERT_IN_USE machines) into the ActionResult and the HTTP body", async () => {
+    const machines = [{ id: "m1", name: "Laser cutter" }];
+    const err = new ServiceError("CERT_IN_USE", "1 machine still requires this certification.", undefined, { machines });
+    expect(toActionError(err)).toEqual({
+      ok: false,
+      code: "CERT_IN_USE",
+      error: "1 machine still requires this certification.",
+      details: { machines },
+    });
+    const res = toHttp(err);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ code: "CERT_IN_USE", details: { machines } });
+  });
+});
+
 describe("HTTP mapping", () => {
   // docs/phases/README.md §4.3. Every code must be listed here, so a new code needs a decision.
   const EXPECTED: Record<ErrorCode, number> = {
@@ -224,6 +240,9 @@ describe("HTTP mapping", () => {
     NOT_A_MEMBER: 403,
     SUSPENDED: 403,
     NOT_FOUND: 404,
+    NAME_TAKEN: 409,
+    CERT_INACTIVE: 409,
+    CERT_IN_USE: 409,
     MACHINE_BUSY: 409,
     MACHINE_RETIRED: 409,
     MACHINE_OUT_OF_SERVICE: 409,
