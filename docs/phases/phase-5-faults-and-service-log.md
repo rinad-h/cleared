@@ -233,7 +233,7 @@ Console nav gains **Faults** (with count). Machines list rows link to machine de
 
 | ID | Task |
 |---|---|
-| P5-01 ★ | Add `faults` and `service_records` to `src/db/schema.ts`; `npm run db:generate`; hand-add the triggers (create order: `service_records`, then `faults`, then triggers); apply local → staging → production |
+| P5-01 ★ | Add `faults` and `service_records` to `src/db/schema.ts`; `npm run db:generate`; hand-add the triggers (create order: `service_records`, then `faults`, then triggers); apply locally, then to the deployment |
 | P5-02 ★ | `src/server/domain/machine-status.ts`: pure transition rules (§4) returning the statements to add to a `withMachineWrite` batch |
 | P5-03 ★ | `services/faults.reportFault` (both variants; idempotent; ends the session on take-out-of-service) + `actions/faults.ts` |
 | P5-04 ★ | `services/machine-status` (set out / update details / return, with the `OPEN_OOS_FAULT` guard) + actions |
@@ -302,19 +302,19 @@ Service tests in `tests/services/` call services directly with actors from the `
 
 | ID | Check |
 |---|---|
-| P5-40 ★ | **Playwright E2E** `tests/e2e/minimum-demo.spec.ts`: on `next dev` with a throwaway D1, three browser contexts sign up real accounts (admin, staff, student; verification links from the dev outbox) and run PRD 5.1 steps 1–10 |
-| P5-41 ★ | **Manual on production with a physical phone** (T01): print a label → scan → sign in → NOT CLEARED → staff signs off → CLEARED → Start 60 min → board *In use* → Report a problem (take out of service) → board *Out of service · issue reported* → staff logs a repair with `returned_to_service` → board *Available* → machine detail shows the repair. Record a short screen recording of the demo |
+| P5-40 ★ | **Playwright E2E** `tests/e2e/minimum-demo.spec.ts`: on `next dev` with a throwaway D1, three browser contexts sign up real accounts (admin, staff, student) and run PRD 5.1 steps 1–10 |
+| P5-41 ★ | **Manual on the deployed app with a physical phone** (T01): print a label → scan → sign in → NOT CLEARED → staff signs off → CLEARED → Start 60 min → board *In use* → Report a problem (take out of service) → board *Out of service · issue reported* → staff logs a repair with `returned_to_service` → board *Available* → machine detail shows the repair. Record a short screen recording of the demo |
 | P5-42 | Service logging timed on a phone: ≤ 60 s (PRD 4.2) |
-| P5-43 | Check `cpuTime` in Workers Logs (staging) for the machine detail page and the log-service action; note anything above 5 ms for the Phase 7 audit |
+| P5-43 | Check `cpuTime` in Workers Logs (the deployment) for the machine detail page and the log-service action; note anything above 5 ms for the Phase 7 audit |
 
 ---
 
 ## 9. Exit criteria
 
 - [ ] T07 and T08 green; the out-of-service cases of T02/T06 re-run through the real services.
-- [ ] **The 10-step minimum demo works end to end on production on a physical phone** (PRD M0 exit, T01).
+- [ ] **The 10-step minimum demo works end to end on the deployed app on a physical phone** (PRD M0 exit, T01).
 - [ ] Service-record entry measured at ≤ 60 s on a phone.
-- [ ] Migration `0005` applied to production.
+- [ ] Migration `0005` applied to the deployment.
 
 ---
 

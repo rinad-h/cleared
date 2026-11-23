@@ -30,7 +30,7 @@
 
 ## 3. Data model
 
-Add to `src/db/schema.ts`, `npm run db:generate` → `drizzle/0003_grants.sql`, review, apply local → staging → production (`db:migrate`, `db:migrate:staging`, `db:migrate:remote`). Additive only.
+Add to `src/db/schema.ts`, `npm run db:generate` → `drizzle/0003_grants.sql`, review, apply locally, then to the deployment (`db:migrate`, `db:migrate:remote`). Additive only.
 
 ```sql
 CREATE TABLE grants (
@@ -239,7 +239,7 @@ Structure:
 - **Server Component** page: renders the shell, then a `<Suspense>` boundary around `<PassSection token>` which reads the session (`getActor()`) and calls `getMachineByToken`. Session reads must be inside `<Suspense>`.
 - **Client components** inside it: `<LiveClock offsetMs tz>`, `<MissingCertList>`, and (Phase 4/5) the session and report-a-problem forms that call server actions.
 - **Refresh:** a client `<AutoRefresh seconds={60}>` (Phase 0 component) calls `router.refresh()` every 60 s **while the tab is visible**; after the tab was hidden it refreshes as soon as 60 s have passed since the last refresh (right away if they already have). After an action, the action's own `refresh()` re-renders the page, so no extra refresh is needed. That's cheaper than polling a JSON endpoint here because the pass is usually open for less than a minute.
-- **Hot path CPU** (`technologies.md` §5.2): one batched data call, a small component tree, no markdown, charts or heavy animation. Check `cpuTime` on staging (P3-53).
+- **Hot path CPU** (`technologies.md` §5.2): one batched data call, a small component tree, no markdown, charts or heavy animation. Check `cpuTime` on the deployment (P3-53).
 - Links out of this page (to My certifications, Help) use `prefetch={false}`.
 
 Layout, mobile-first and readable from 1–2 m:
@@ -304,7 +304,7 @@ Cards per certification: state chip (Valid / Expiring soon / Expired / Revoked /
 
 | ID | Task |
 |---|---|
-| P3-01 ★ | `grants` in `src/db/schema.ts`; `npm run db:generate` → `drizzle/0003_grants.sql`; review; apply local → staging → production |
+| P3-01 ★ | `grants` in `src/db/schema.ts`; `npm run db:generate` → `drizzle/0003_grants.sql`; review; apply locally, then to the deployment |
 | P3-02 ★ | `addMonthsUtc` in `src/server/domain/time.ts`; `isGrantValid`, `bestGrant`, `validGrantSql()` in `src/server/domain/grants.ts` |
 | P3-03 ★ | `computePass` in `src/server/domain/pass.ts` (§4.3) |
 | P3-04 ★ | `loadPassContext(db, machine, actor)` in `src/server/services/pass.ts`: requirements + certifications + viewer grants in **one `db.batch()` of reads** |
@@ -383,20 +383,20 @@ Service tests in `tests/services/`, Vitest + `@cloudflare/vitest-plugin`, callin
 
 | ID | Check |
 |---|---|
-| P3-50 ★ | Steps 4–6 of the demo on staging with a physical phone (student) and a laptop (staff) |
+| P3-50 ★ | Steps 4–6 of the demo on the deployed app with a physical phone (student) and a laptop (staff) |
 | P3-51 | Pass readable at 1 m and 2 m in makerspace lighting; the ticking seconds are visible |
 | P3-52 | Journey C timed: sign-off in ≤ 30 s (PRD 4.2). Record the time |
-| P3-53 | Workers Logs on staging: `cpuTime` for `/m/<token>` (all four statuses) well under 10 ms |
+| P3-53 | Workers Logs on the deployment: `cpuTime` for `/m/<token>` (all four statuses) well under 10 ms |
 
 ---
 
 ## 8. Exit criteria
 
 - [ ] T02 and T03 green (with the T02 out-of-service case marked to re-run against the real flow in Phase 5).
-- [ ] Demo steps 4–6 work on staging and production with a phone.
+- [ ] Demo steps 4–6 work on the deployed app with a phone.
 - [ ] Sign-off timed at ≤ 30 s.
-- [ ] Pass page `cpuTime` recorded on staging.
-- [ ] Migration `0003` applied to production.
+- [ ] Pass page `cpuTime` recorded on the deployment.
+- [ ] Migration `0003` applied to the deployment.
 
 ---
 

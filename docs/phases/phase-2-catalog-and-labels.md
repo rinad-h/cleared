@@ -21,7 +21,7 @@
 5. A **door poster** with QR codes for the status board and the join link (Journey F: "a QR code at the door").
 6. `/m/[token]` resolves to the machine or shows a neutral **"label not recognized"** page (unknown or retired token).
 7. The machine row carries `write_token` from day one, ready for Phase 4's guarded writes, and `src/server/machine-write.ts` exists with tests.
-8. **Production is configured** with the makerspace used for the demo. From this point, **migrations are additive only**.
+8. **The deployment is configured** with the makerspace used for the demo. From this point, **migrations are additive only**.
 
 ## 2. Scope
 
@@ -33,7 +33,7 @@
 
 ## 3. Data model
 
-Edit `src/db/schema.ts`, run `npm run db:generate` (drizzle-kit writes `drizzle/0002_catalog.sql`), review the SQL by hand, then `npm run db:migrate` (local) → `db:migrate:staging` → `db:migrate:remote`. The reviewed migration must match:
+Edit `src/db/schema.ts`, run `npm run db:generate` (drizzle-kit writes `drizzle/0002_catalog.sql`), review the SQL by hand, then `npm run db:migrate` (local) → `npm run db:migrate:remote` (the deployment). The reviewed migration must match:
 
 ```sql
 CREATE TABLE rooms (
@@ -148,7 +148,7 @@ Guarding the requirement change with the token matters because a session start (
 
 - `qr_token = randomToken(16)`: 128 random bits, base64url, 22 chars (`src/server/domain/tokens.ts`). Created once at machine creation.
 - Rename, move and reprint **reuse** the token. There's no regenerate operation (P1). If a label is misused, retire the machine and re-add it (PRD 5.3).
-- URL format: `${PUBLIC_BASE_URL}/m/${qr_token}`. **Always built on the server from `PUBLIC_BASE_URL`** (read with `getEnv()` from `src/lib/env.ts`, so E2E overrides apply; `technologies.md` §5.1), never from the request host. Labels never use the request's own origin, so labels printed while browsing staging or localhost can't point at the wrong place by accident.
+- URL format: `${PUBLIC_BASE_URL}/m/${qr_token}`. **Always built on the server from `PUBLIC_BASE_URL`** (read with `getEnv()` from `src/lib/env.ts`, so E2E overrides apply; `technologies.md` §5.1), never from the request host. Labels never use the request's own origin, so labels printed while browsing a local or preview server can't point at the wrong place by accident.
 
 ---
 
@@ -206,7 +206,7 @@ The **Journey A setup checklist** card on the console home (temporary until Phas
   - *Compact*: 3 × 6 per page, QR ≈ 32 mm. Minimum recommended size for reliable phone scanning at 20–30 cm.
 - **Label content:** makerspace name (small) · **machine name** (large, bold) · room · QR · "Scan to check your pass" · URL in small print as a fallback.
 - **Safety banners:**
-  - `environment !== "production"` → a red banner that also **prints**: "STAGING LABELS: these won't work in the real app".
+  - `environment !== "production"` (a local or E2E server) → a red banner that also **prints**: "NOT THE REAL APP: these labels won't work".
   - `window.location.origin !== baseUrl` → a notice: "Labels point to *baseUrl*".
 - `break-inside: avoid` on labels; the screen-only UI is hidden with `@media print`.
 - **Contrast:** black on white only, a quiet zone of at least 2 modules, no logos inside the QR.
@@ -230,7 +230,7 @@ File: `src/app/(member)/m/[token]/page.tsx`.
 
 | ID | Task |
 |---|---|
-| P2-01 ★ | Schema in `src/db/schema.ts`; `npm run db:generate` → `drizzle/0002_catalog.sql`; review; apply locally and to staging |
+| P2-01 ★ | Schema in `src/db/schema.ts`; `npm run db:generate` → `drizzle/0002_catalog.sql`; review; apply locally, then to the deployment |
 | P2-02 ★ | `withMachineWrite()` in `src/server/machine-write.ts` (§4.3) with retry/jitter and `CONFLICT_RETRY` |
 | P2-03 ★ | Rooms service + server actions + page data |
 | P2-04 ★ | Certifications service; deactivate guard (`CERT_IN_USE`) as a single guarded statement: `UPDATE certifications SET active = 0 … WHERE id = :id AND NOT EXISTS (SELECT 1 FROM machine_requirements r JOIN machines m ON m.id = r.machine_id WHERE r.certification_id = :id AND m.status <> 'retired')` |
@@ -256,11 +256,11 @@ File: `src/app/(member)/m/[token]/page.tsx`.
 | P2-27 | Setup checklist card on console home |
 | P2-28 | Console nav: Machines, Rooms, Certifications (admin), Labels |
 
-### 7.3 Production configuration
+### 7.3 Deployment configuration
 
 | ID | Task |
 |---|---|
-| P2-30 ★ | `npm run db:migrate:remote` for `0002`; complete **Setup on production** with the demo makerspace ("Demo Makerspace", clearly fake), or wait for the real pilot space |
+| P2-30 ★ | `npm run db:migrate:remote` for `0002`. The deployment's Setup was completed in Phase 1 with the demo makerspace ("Demo Makerspace", clearly fake); add the demo catalog there. A real pilot space starts later from a reset database (Phase 7) |
 | P2-31 ★ | Mark the end of "free-form migrations": from now on, every migration follows the additive-only checklist (`drizzle/README.md`) |
 
 ### 7.4 Tests
@@ -282,7 +282,7 @@ Service tests run in Vitest with `@cloudflare/vitest-plugin` (real `workerd`, fr
 | P2-50 | Permission sweep: every new service rejects one role below its minimum (no new test code needed beyond adding the services to the sweep table) | T10 |
 | P2-51 | E2E (`tests/e2e/catalog.spec.ts`, Playwright on `next dev` with a throwaway D1): an admin who signed up for real creates a room, a certification and a machine at 375 px, opens the label sheet, and the QR SVG renders | FR-04–06 |
 
-### 7.5 Manual checks (staging, then production)
+### 7.5 Manual checks (deployed app)
 
 | ID | Check |
 |---|---|
@@ -290,16 +290,16 @@ Service tests run in Vitest with `@cloudflare/vitest-plugin` (real `workerd`, fr
 | P2-61 | Scan a label at 1 m (Large) and 30 cm (Compact) in normal room light |
 | P2-62 | Retire a machine → scanning its label shows "label not recognized" |
 | P2-63 | Timed run of Journey A setup: 10 machines + 3 certifications + labels printed. Target ≤ 30 min (PRD 4.2). Record the time |
-| P2-64 | Staging labels print the red "STAGING LABELS" banner |
-| P2-65 | Workers Logs: `cpuTime` for `/m/<token>` and `/console/labels` on staging stays well under 10 ms (`technologies.md` §5.2) |
+| P2-64 | Labels printed from a local dev server (`npm run dev`) print the red "NOT THE REAL APP" banner |
+| P2-65 | Workers Logs: `cpuTime` for `/m/<token>` and `/console/labels` on the deployment stays well under 10 ms (`technologies.md` §5.2) |
 
 ---
 
 ## 8. Exit criteria
 
 - [ ] All Phase 2 service and E2E tests green; the permission sweep covers the new services.
-- [ ] Production has migration `0002`; the demo makerspace is set up on production.
-- [ ] A label printed from **production** opens the right machine on two different phones (T01 partial).
+- [ ] The deployment has migration `0002`; the demo makerspace is set up on it.
+- [ ] A label printed from **the deployment** opens the right machine on two different phones (T01 partial).
 - [ ] Journey A timing recorded (target ≤ 30 min).
 - [ ] Additive-only migration rule in force.
 
@@ -323,7 +323,7 @@ Service tests run in Vitest with `@cloudflare/vitest-plugin` (real `workerd`, fr
 
 | Risk | Mitigation |
 |---|---|
-| Labels printed from staging or localhost | URL from `PUBLIC_BASE_URL` on the server; red printed banner on non-production |
+| Labels printed from a local or preview server | URL from `PUBLIC_BASE_URL` on the server; red printed banner outside `ENVIRONMENT=production` |
 | QR too small or low-contrast to scan | Two tested sizes; black on white; quiet zone; manual scan test (P2-60/61) |
 | A future URL change means reprinting every label | Subdomain frozen in Phase 0; label count is small (≤ 60) |
 | Setup takes longer than 30 min | "Add another" flow, room pre-select, timed test P2-63 drives fixes |

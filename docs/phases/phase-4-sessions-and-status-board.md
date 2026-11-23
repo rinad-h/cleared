@@ -33,7 +33,7 @@
 
 ## 3. Data model
 
-Add to `src/db/schema.ts`, `npm run db:generate` → `drizzle/0004_sessions.sql`, review (check the partial indexes came out right), apply local → staging → production. Additive only.
+Add to `src/db/schema.ts`, `npm run db:generate` → `drizzle/0004_sessions.sql`, review (check the partial indexes came out right), apply locally, then to the deployment. Additive only.
 
 ```sql
 CREATE TABLE machine_sessions (
@@ -331,7 +331,7 @@ The board matches the PRD 8.1 sketch.
 
 | ID | Task |
 |---|---|
-| P4-01 ★ | `machine_sessions` in `src/db/schema.ts`; `npm run db:generate` → `drizzle/0004_sessions.sql`; review; apply local → staging → production |
+| P4-01 ★ | `machine_sessions` in `src/db/schema.ts`; `npm run db:generate` → `drizzle/0004_sessions.sql`; review; apply locally, then to the deployment |
 | P4-02 ★ | `src/server/domain/sessions.ts`: `isActive(session, now)`, `capEnd(startedAt)`, expiry SQL builders |
 | P4-03 ★ | `startSession` service + action (§4.2) with guarded insert and all result cases |
 | P4-04 ★ | `endSession` service + action (§4.4) |
@@ -406,21 +406,21 @@ Service tests in `tests/services/` (Vitest + `@cloudflare/vitest-plugin`, real l
 
 | ID | Check |
 |---|---|
-| P4-40 ★ | Demo step 7 on staging: start a 60-min session on a phone → board on a second phone shows *In use · est. free* within 30 s |
+| P4-40 ★ | Demo step 7 on the deployed app: start a 60-min session on a phone → board on a second phone shows *In use · est. free* within 30 s |
 | P4-41 | Two phones tap Start on the same machine at the same moment → one gets the session, the other sees "Someone just started a session" |
 | P4-42 | Board status check usability (PRD 4.2): 5 people find "a free machine I'm cleared for, and when a busy one frees up", target ≤ 10 s for 4 of 5 |
 | P4-43 | Leave the board open in a background tab for 10 min → no requests in `wrangler tail` while hidden |
-| P4-44 | Workers Logs on staging: `cpuTime` for the `/machines` render, `/api/status-board` 200 and 304, and the start-session action, all well under 10 ms |
+| P4-44 | Workers Logs on the deployment: `cpuTime` for the `/machines` render, `/api/status-board` 200 and 304, and the start-session action, all well under 10 ms |
 
 ---
 
 ## 8. Exit criteria
 
 - [ ] T05, T06 and the T04 session cases green; E2E green.
-- [ ] Demo step 7 works on staging and production.
+- [ ] Demo step 7 works on the deployed app.
 - [ ] Measured board cost recorded in `technologies.md` §13.1: rows read for 304 and 200 at the demo data size.
-- [ ] Board and session `cpuTime` recorded on staging.
-- [ ] Migration `0004` applied to production.
+- [ ] Board and session `cpuTime` recorded on the deployment.
+- [ ] Migration `0004` applied to the deployment.
 
 ---
 

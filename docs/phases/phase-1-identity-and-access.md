@@ -1,6 +1,6 @@
 # Phase 1 — Identity, Setup & Access Control
 
-> **Goal:** people can sign up and sign in with **email and password** (verified email, self-service password reset), the first person sets up the makerspace and becomes admin, everyone else joins with the join link, and every service enforces roles on the server.
+> **Goal:** people can sign up and sign in with **email and password** (no email is ever sent: no verification, and staff reset forgotten passwords), the first person sets up the makerspace and becomes admin, everyone else joins with the join link, and every service enforces roles on the server.
 
 | | |
 |---|---|
@@ -8,25 +8,24 @@
 | Depends on | Phase 0 (scaffold, spike S1 decision on password hashing) |
 | Unlocks | Phase 2 |
 | Estimated effort | 4–5 days |
-| Demo checkpoint | On staging, from a phone: sign up → verification email → verify → first user completes Setup → second user signs up, opens the join link and joins → admin promotes them to staff. "Forgot password" works end to end |
+| Demo checkpoint | On the deployed app, from a phone: sign up → first user completes Setup → second user signs up, opens the join link and joins → admin promotes them to staff. An admin resets a forgotten password with `scripts/set-password.ts` |
 
 ---
 
 ## 1. Outcomes
 
-1. **Better Auth email + password** (`technologies.md` §6): sign-up, **email verification** (required), sign-in, sign-out, **forgot/reset password**, change password, sessions in D1, database-backed rate limits. Hashing as decided by spike S1.
-2. **Brevo** email sender with a **daily cap** in D1, plus a guarded **dev outbox** for local and E2E use.
-3. `settings` and `members` tables. Roles (`admin`/`staff`/`member`) and status (`active`/`suspended`) live in **our** `members` table.
-4. **`getActor()`** builds the request's `Actor` (anonymous / signed-in user without membership / member). **Services enforce every permission** with `requireMember` / `requireRole`.
-5. First-run **Setup** (exactly once, even under concurrent attempts), **join link** with regenerate, **role and suspension management** including the atomic last-admin rule.
-6. App shell: sign-up/sign-in/verify/forgot/reset pages, setup, join, "no membership" and "suspended" gates, member/console switch, account page.
-7. A test proves every server action goes through `getActor()` and a service (no unchecked actions).
+1. **Better Auth email + password** (`technologies.md` §6): sign-up (signed in straight away), sign-in, sign-out, change password, sign out everywhere, sessions in D1, database-backed rate limits. Hashing as decided by spike S1. **No email is sent** (`technologies.md` §7): addresses aren't verified, and a forgotten password is reset by an admin.
+2. `settings` and `members` tables. Roles (`admin`/`staff`/`member`) and status (`active`/`suspended`) live in **our** `members` table.
+3. **`getActor()`** builds the request's `Actor` (anonymous / signed-in user without membership / member). **Services enforce every permission** with `requireMember` / `requireRole`.
+4. First-run **Setup** (exactly once, even under concurrent attempts), **join link** with regenerate, **role and suspension management** including the atomic last-admin rule.
+5. App shell: sign-up and sign-in pages, setup, join, "no membership" and "suspended" gates, member/console switch, account page.
+6. A test proves every server action goes through `getActor()` and a service (no unchecked actions).
 
 ## 2. Scope
 
-**In:** auth flows, email sending, sessions, setup, join, roles, suspension, settings (name, time zone, join link), Members list/detail (roles and status), account page (change password, sign out everywhere), help page stub.
+**In:** auth flows, sessions, setup, join, roles, suspension, settings (name, time zone, join link), Members list/detail (roles and status), account page (change password, sign out everywhere), help page stub.
 
-**Out:** staff email invitations (P1), SSO / social login / MFA / passkeys (P1; Better Auth has free plugins), per-certification trainer rights (P1), multiple makerspaces (P1), editing your own display name (open question §9).
+**Out:** any email sending (verification, password reset, invitations), SSO / social login / MFA / passkeys (P1; Better Auth has free plugins), per-certification trainer rights (P1), multiple makerspaces (P1), editing your own display name (open question §9).
 
 ---
 
@@ -38,10 +37,10 @@ Migration `drizzle/0001_identity.sql`. Better Auth's tables are generated with i
 
 | Table | Purpose |
 |---|---|
-| `user` | id, `name` (the display name entered at sign-up), `email` (unique, lowercased), `email_verified`, timestamps |
+| `user` | id, `name` (the display name entered at sign-up), `email` (unique, lowercased), `email_verified` (always false: nothing is verified), timestamps |
 | `account` | `provider_id = 'credential'` + `password` (scrypt hash) |
 | `session` | token, expiry, user, IP, user agent |
-| `verification` | email-verification and password-reset tokens |
+| `verification` | Generated by Better Auth but unused (no verification or reset emails) |
 | `rate_limit` | Better Auth's limiter counters (`storage: "database"`) |
 
 ### 3.2 Cleared tables
@@ -74,12 +73,6 @@ CREATE TABLE members (
 CREATE INDEX members_role_status  ON members(role, status);
 CREATE INDEX members_display_name ON members(display_name COLLATE NOCASE);
 CREATE INDEX members_email        ON members(email COLLATE NOCASE);
-
--- Brevo daily cap (technologies.md §7.2). One row per UTC day.
-CREATE TABLE email_send_log (
-  day   TEXT PRIMARY KEY,          -- 'YYYY-MM-DD' (UTC)
-  count INTEGER NOT NULL DEFAULT 0
-);
 ```
 
 - `members.email` and `display_name` are copied from `user` at join, so staff search doesn't need a join.
@@ -91,9 +84,9 @@ CREATE TABLE email_send_log (
 
 ### 4.1 Better Auth configuration
 
-As in `technologies.md` §6.3: `emailAndPassword` (8–128 chars, `requireEmailVerification` from the env var, `autoSignIn: false`, 1-hour reset tokens, `revokeSessionsOnPasswordReset`), `emailVerification` (send on sign-up, auto sign-in after verifying, 24 h expiry), 30-day sessions with a 5-minute cookie cache, **database rate limits** with custom rules, `trustedOrigins: [PUBLIC_BASE_URL]`, `cf-connecting-ip` for client IPs, `nextCookies()` last.
+As in `technologies.md` §6.3: `emailAndPassword` (8–128 chars, `autoSignIn: true`; no verification, no reset emails), no `emailVerification` block, 30-day sessions with a 5-minute cookie cache, **database rate limits** with custom rules, `trustedOrigins: [PUBLIC_BASE_URL]`, `cf-connecting-ip` for client IPs, `nextCookies()` last.
 
-**If spike S1 chose native scrypt:** `emailAndPassword.password = { hash, verify }` implemented in `src/server/password.ts` with `node:crypto` `scrypt` (N=16384, r=16, p=1, 64-byte key, 16-byte salt, NFKC-normalised password, `salt:key` hex). That's the same format as Better Auth's default, so hashes made either way verify either way. A unit test proves it: a hash from `better-auth/crypto` `hashPassword` verifies with ours, and the other way round.
+**If P1-01 shows native scrypt fits:** `emailAndPassword.password = { hash, verify }` implemented in `src/server/password.ts` with `node:crypto` `scrypt` (N=16384, r=16, p=1, 64-byte key, 16-byte salt, NFKC-normalised password, `salt:key` hex). That's the same format as Better Auth's default, so hashes made either way verify either way. A unit test proves it: a hash from `better-auth/crypto` `hashPassword` verifies with ours, and the other way round.
 
 Mounted at `src/app/api/auth/[...all]/route.ts` with `toNextJsHandler(getAuth())` (a new instance per request).
 
@@ -101,38 +94,18 @@ Mounted at `src/app/api/auth/[...all]/route.ts` with `toNextJsHandler(getAuth())
 
 | Flow | Route (page) | Steps | Errors shown |
 |---|---|---|---|
-| **Sign up** | `/sign-up?next=` | Name, email, password (with show/hide toggle; "at least 8 characters"; no composition rules, per NIST guidance) → `signUp.email({ name, email, password, callbackURL: "/verify-email/done?next=…" })` → "Check your email" screen with **Resend** (60 s cooldown) and "check your spam folder" | Email already registered → **the same "check your email" screen** (no account enumeration; Better Auth's behaviour with verification required, to confirm); weak password; `RATE_LIMITED`; `EMAIL_DAILY_CAP` |
-| **Verify email** | link → `/api/auth/verify-email?token=…` → `/verify-email/done` | Token checked → `email_verified = true` → auto sign-in → redirect to `next` | Expired/invalid link → "This link has expired" + resend form |
-| **Sign in** | `/sign-in?next=` | Email + password → `signIn.email(...)` → redirect to `next` | Wrong email or password → **one generic message** ("Email or password is incorrect"); unverified → "Verify your email first" + Resend; `RATE_LIMITED` ("Too many attempts. Wait a minute") |
-| **Forgot password** | `/forgot-password` | Email → `requestPasswordReset({ email, redirectTo: "/reset-password" })` → **always** "If an account exists, we've emailed a link" | `RATE_LIMITED`, `EMAIL_DAILY_CAP` |
-| **Reset password** | `/reset-password?token=` | New password twice → `resetPassword({ newPassword, token })` → other sessions revoked → "Password changed. Sign in" | Expired token → link back to Forgot password |
+| **Sign up** | `/sign-up?next=` | Name, email, password (with show/hide toggle; "at least 8 characters"; no composition rules, per NIST guidance) → `signUp.email({ name, email, password })` → signed in → redirect to `next` | Email already registered → "An account with this email already exists. Sign in instead" (Better Auth reveals this when auto sign-in is on; accepted, D5); weak password; `RATE_LIMITED` |
+| **Sign in** | `/sign-in?next=` | Email + password → `signIn.email(...)` → redirect to `next` | Wrong email or password → **one generic message** ("Email or password is incorrect"); `RATE_LIMITED` ("Too many attempts. Wait a minute") |
+| **Forgot password** | text on `/sign-in` | "Forgot your password? Ask staff to reset it." An admin runs `npx tsx scripts/set-password.ts <email> <temporary-password>` (`technologies.md` §6.6) and tells the member, who signs in and changes it | — |
 | **Change password** | `/me/account` | Current + new → `changePassword({ currentPassword, newPassword, revokeOtherSessions: true })` | Wrong current password |
 | **Sign out** | account menu | `signOut()` | — |
 | **Sign out everywhere** | `/me/account` | `revokeSessions()` | — |
 
 **`next` handling:** after scanning a label (`/m/<token>`), `proxy.ts` sends a signed-out user to `/sign-in?next=/m/<token>`. `next` must be a relative path starting with `/` and not `//`; otherwise default to `/machines`. The sign-up link on the sign-in page carries `next` along.
 
-### 4.3 Email sender (`src/server/email.ts`)
+### 4.3 No email
 
-```ts
-interface EmailSender {
-  verifyEmail(to: string, url: string): Promise<void>;
-  passwordReset(to: string, url: string): Promise<void>;
-}
-```
-
-- **`BrevoEmailSender`** (staging/production):
-  1. Reserve quota atomically:
-     ```sql
-     INSERT INTO email_send_log(day, count) VALUES (:day, 1)
-     ON CONFLICT(day) DO UPDATE SET count = count + 1 WHERE count < :cap
-     RETURNING count;
-     ```
-     No row → throw `EMAIL_DAILY_CAP` ("Email is busy today. Try again after 5 pm").
-  2. `POST https://api.brevo.com/v3/smtp/email` with sender (`EMAIL_FROM_NAME`, `EMAIL_FROM_ADDRESS`), **`replyTo: EMAIL_FROM_ADDRESS`** (Brevo rewrites a free-mail sender to an address on its own domain, so without `replyTo` replies would go to Brevo), a short subject ("Verify your Cleared account" / "Reset your Cleared password"), plain-text + simple HTML body with the link, its expiry, and "If you didn't ask for this, ignore this email".
-  3. A non-2xx response → log `email_send_failed` with the status code only → `EMAIL_SEND_FAILED`.
-- **`DevEmailSender`** (`ENVIRONMENT` is `development` or `test`): logs a redacted line and stores `{ to, kind, url }` in an in-memory outbox.
-- **`GET /api/dev/outbox?email=`** returns the latest link for that address. It returns 404 unless `NODE_ENV === "development"` **and** `ENABLE_DEV_OUTBOX === "1"`. E2E uses it to click verification and reset links.
+Cleared sends no email (`technologies.md` §7). E2E tests sign up and sign in directly. The trade-offs are D1 and D5 in §9.
 
 ### 4.4 Actor and authorization (`src/lib/actor.ts`, `src/server/authz.ts`)
 
@@ -175,7 +148,7 @@ A cheap cookie-presence check, with the matcher updated to `/machines/:path*`, `
 
 ### 4.6 Auth abuse limits (FR-19, auth part)
 
-Better Auth's limiter with `storage: "database"` (shared across isolates): sign-in 5/min, sign-up 3/min, password-reset request 3 per 5 min, verification resend 3 per 5 min, all per IP (`cf-connecting-ip`). In E2E (`ENVIRONMENT=test`) the limits are raised through config, so tests can create many accounts (Better Auth rate-limits sign-ups outside development).
+Better Auth's limiter with `storage: "database"` (shared across isolates): sign-in 5/min and sign-up 3/min, per IP (`cf-connecting-ip`). In E2E (`ENVIRONMENT=test`) the limits are raised through config, so tests can create many accounts (Better Auth rate-limits sign-ups outside development).
 
 ---
 
@@ -183,7 +156,7 @@ Better Auth's limiter with `storage: "database"` (shared across isolates): sign-
 
 | Operation | Kind | Auth | Input | Result |
 |---|---|---|---|---|
-| Better Auth endpoints | Better Auth | public | — | Sign-up, sign-in, verify, reset, sign-out, sessions |
+| Better Auth endpoints | Better Auth | public | — | Sign-up, sign-in, sign-out, change password, sessions |
 | `getMe` | Page data | user | — | `{ user, setupComplete, makerspace \| null, membership \| null }`, used by layouts and gates |
 | `completeSetup` | Server action | user | `{ makerspaceName, timezone }` | Creates settings + the caller as admin (display name from `user.name`). **One batch:** `INSERT INTO settings (id='singleton', …)` + `INSERT INTO members (role='admin')`. A PK conflict rolls back the batch → `SETUP_ALREADY_DONE` |
 | `getJoinPreview` | Page data | user | `token` | `{ valid, makerspaceName? }` |
@@ -225,9 +198,7 @@ The same pattern applies to suspension. Phase 4 adds "suspension ends active ses
 | Route | Screen | Notes |
 |---|---|---|
 | `/sign-up?next=` | **Sign up** | Name, email, password; link to Sign in; Terms/Privacy links (written in Phase 7) |
-| `/sign-in?next=` | **Sign in** | Email, password, "Forgot password?", link to Sign up; makerspace name shown when setup is done |
-| `/verify-email/sent`, `/verify-email/done` | **Check your email** / **Verified** | Resend button with cooldown; "check spam" |
-| `/forgot-password`, `/reset-password` | **Reset** | Always the neutral confirmation message |
+| `/sign-in?next=` | **Sign in** | Email, password, "Forgot your password? Ask staff to reset it.", link to Sign up; makerspace name shown when setup is done |
 | `/setup` | **First-run setup** | Only when `setupComplete = false`. Makerspace name, time zone (searchable select, default `America/Edmonton`). Already done → `/machines` |
 | `/join/[token]` | **Join** | Signed out → `proxy.ts` sends to sign-in/up with `next`. Valid → "Join **Demo Makerspace**" → Join. Invalid → "This join link isn't valid any more. Ask staff for the current link" |
 | (gate) | **No membership** | "You're signed in as x@y but aren't a member. Ask staff for the join link." + Sign out |
@@ -261,17 +232,15 @@ Staff and admins see a **Member app ⇄ Staff console** switch in the header (PR
 
 | ID | Task | Decision recorded |
 |---|---|---|
-| P1-01 ★ | **Email deliverability:** from staging, send verification and reset emails to a Gmail, an Outlook/Hotmail and a university address. Record inbox/spam/missing and delivery time | Brevo OK? "Check spam" copy needed? Fallback sender needed? |
-| P1-02 | Fallback if email is unusable: set `REQUIRE_EMAIL_VERIFICATION=false` for the classroom demo (document it as a deviation from FR-01), and use the admin set-password script for resets (`technologies.md` §6.6) | — |
+| P1-01 ★ | **Password hashing CPU (S1 follow-up):** S1 measured Better Auth's default scrypt at 76–104 ms CPU with Error 1102 after a short burst. Measure native `node:crypto` scrypt with the same parameters, in the same burst test, with `ENABLE_SPIKES` on | Native scrypt fits → P1-12 required. Still 1102s → stop and decide with the project owner |
 
 ### 7.2 Backend
 
 | ID | Task |
 |---|---|
-| P1-10 ★ | Generate Better Auth's schema; write `src/db/schema.ts` additions (`settings`, `members`, `email_send_log`); `npm run db:generate` → `0001_identity.sql`; review; apply local → staging → production |
+| P1-10 ★ | Generate Better Auth's schema; write `src/db/schema.ts` additions (`settings`, `members`); `npm run db:generate` → `0001_identity.sql`; review; apply locally, then to the deployment (`npm run db:migrate:remote`) |
 | P1-11 ★ | `src/lib/auth.ts` (`getAuth()`, `getSession()`) with the §4.1 configuration; `src/app/api/auth/[...all]/route.ts`; `src/lib/auth-client.ts` |
-| P1-12 ★ | Native scrypt hasher **only if S1 requires it**, with the cross-compatibility unit test |
-| P1-13 ★ | Email senders + daily cap + dev outbox route (with its guard) |
+| P1-12 ★ | Native scrypt hasher **if P1-01 confirms it fits**, with the cross-compatibility unit test |
 | P1-14 ★ | `getActor()`, `authz.ts`, `permissions.ts` |
 | P1-15 ★ | `action()` wrapper + the "all actions wrapped" test |
 | P1-16 ★ | Services: `setup.completeSetup`, `join.preview`, `join.join`, `settings.get/update/regenerateJoinLink`, `members.search/get/update` |
@@ -284,8 +253,8 @@ Staff and admins see a **Member app ⇄ Staff console** switch in the header (PR
 
 | ID | Task |
 |---|---|
-| P1-30 ★ | Sign-up, sign-in, check-email, verified pages with `next` handling |
-| P1-31 | Forgot/reset password pages; account page |
+| P1-30 ★ | Sign-up and sign-in pages with `next` handling |
+| P1-31 | Account page (change password, sign out everywhere) |
 | P1-32 ★ | Setup page |
 | P1-33 ★ | Join page + gates |
 | P1-34 ★ | Member and console layouts with nav, switch, account menu |
@@ -307,31 +276,29 @@ Service tests call services with actors and explicit `now` (README §4.5). E2E u
 | P1-45 ★ | Suspension: staff suspend member ✔; staff suspend staff/admin → `FORBIDDEN`; admin suspend staff ✔; a suspended actor → `SUSPENDED` from every member service |
 | P1-46 | Settings: admin only; invalid time zone → validation error; `data_version` increments |
 | P1-47 ★ | **All server actions wrapped** by `action()` (§4.4) |
-| P1-48 | Email cap: with cap 2, the third send → `EMAIL_DAILY_CAP`; counter keyed by UTC day |
 | P1-49 | `next` sanitiser: `//evil.com`, `https://evil.com`, `javascript:` → `/machines` |
-| P1-50 | Dev outbox route returns 404 when `ENABLE_DEV_OUTBOX` is unset or `NODE_ENV` is `production` |
 | P1-51 | Native hasher (if used): cross-verifies with `better-auth/crypto` `hashPassword` |
-| P1-52 ★ | **E2E** `auth.spec.ts`: sign up → read the verification link from the dev outbox → verified + signed in → setup → sign out → sign in with a wrong password (generic error) → sign in → forgot password → reset via the outbox link → sign in with the new password |
+| P1-52 ★ | **E2E** `auth.spec.ts`: sign up → signed in → setup → sign out → sign in with a wrong password (generic error) → sign in → change password → sign out → sign in with the new password |
 | P1-53 ★ | **E2E** `join.spec.ts`: second account signs up, opens the join link, joins; admin promotes them to staff; staff sees the console |
 
-### 7.5 Manual checks (staging, physical phone)
+### 7.5 Manual checks (deployed app, physical phone)
 
 | ID | Check |
 |---|---|
-| P1-60 ★ | Sign up on a phone, verify from the phone's mail app, land back in Cleared signed in |
+| P1-60 ★ | Sign up on a phone and land in Cleared signed in |
 | P1-61 ★ | Close and reopen the browser → still signed in (30-day session) |
-| P1-62 | Forgot password from a phone; the reset email arrives (record the time) |
+| P1-62 | An admin resets a member's password with `scripts/set-password.ts`; the member signs in on a phone and changes it |
 | P1-63 | Workers Logs: sign-up and sign-in requests show **no 1102** and `cpuTime` within the S1 findings |
 
 ---
 
 ## 8. Exit criteria
 
-- [ ] The E2E auth and join flows are green; service tests P1-41…P1-51 green.
-- [ ] On staging with a phone: sign-up → verify → setup/join → promote works; password reset works; the session persists.
-- [ ] No 1102 errors on auth routes in staging logs over the phase.
-- [ ] Email deliverability recorded (P1-01); the fallback decision made if needed.
-- [ ] Migration `0001` applied to production (production setup is run in Phase 2).
+- [ ] The E2E auth and join flows are green; service tests P1-41…P1-49 and P1-51 green.
+- [ ] On the deployed app with a phone: sign-up → setup/join → promote works; an admin password reset works; the session persists.
+- [ ] No 1102 errors on auth routes in the deployment's logs over the phase.
+- [ ] The hashing decision recorded (P1-01).
+- [ ] Migration `0001` applied to the deployment. First-run Setup there uses the clearly fake name "Demo Makerspace": Phase 2 builds on it, and a real pilot later starts from a reset database (Phase 7).
 
 ---
 
@@ -339,23 +306,23 @@ Service tests call services with actors and explicit `now` (README §4.5). E2E u
 
 | # | Item | Status |
 |---|---|---|
-| D1 | Email + password with **required** email verification (FR-01) | Decided (user choice); fallback P1-02 if email is unusable |
+| D1 | Email + password **without** email verification or self-service reset: the app sends no email. Deviation from FR-01 ("email with verification"); anyone can register with an address they don't own, which matters little because joining needs the staff join link | Decided 2026-11-23 (project owner): no free sender works without a domain or an organization postal address |
 | D2 | Hashing: Better Auth default scrypt, or native `node:crypto` scrypt with the same format | Decided by spike S1 |
 | D3 | Roles and status in `members`, not Better Auth | Decided (PRD 10.2) |
 | D4 | Membership read on every request | Decided: suspension applies immediately |
-| D5 | Generic sign-in errors and neutral reset/sign-up confirmations (no account enumeration) | Decided |
+| D5 | One generic sign-in error. Sign-up does reveal that an email is already registered (Better Auth's behaviour with auto sign-in on), which is accepted for a classroom app | Decided 2026-11-23 |
 | D6 | Self-suspension refused | Decided (not in PRD; prevents lock-out mistakes) |
 | D7 | No test-auth stub; services take an actor; E2E uses real sign-up | Decided (replaces PRD 11.1 stub) |
 | Q1 | Can members edit their own display name? Proposed: not in MVP (prevents impersonation on passes); staff can't either; revisit in P1 | Proposed |
-| Q2 | Unverified accounts piling up: proposed cleanup query in the runbook (delete `user` rows unverified for > 7 days with no `members` row), run by hand once a term | Proposed |
+| Q2 | Accounts that never join piling up: proposed cleanup query in the runbook (delete `user` rows older than 30 days with no `members` row), run by hand once a term | Proposed |
+| Q4 | Should admins reset passwords in the console instead of with a laptop script? It would hash on the Worker, so it waits for the P1-01 result | Open |
 | Q3 | Should the sign-up page require an "I agree to the Terms" checkbox? Proposed: a sentence with links is enough for the MVP | Proposed |
 
 ## 10. Risks
 
 | Risk | Mitigation |
 |---|---|
-| Password hashing exceeds the CPU limit in production | Spike S1 before this phase; native scrypt; monitor 1102s on auth routes (P1-63); fallback decided with the user |
-| Verification emails land in spam or are slow | Spike P1-01; "check spam" copy; resend button; fallback P1-02 |
-| Term-start sign-ups exceed 300 emails/day | Stagger onboarding; the cap message gives a time; the classroom demo needs < 20 |
-| Students forget passwords | Self-service reset (email); admin set-password script as a fallback |
+| Password hashing exceeds the CPU limit on the deployment (S1 saw 1102s with the default hasher) | Native scrypt (P1-01, P1-12); monitor 1102s on auth routes (P1-63); otherwise decide with the project owner |
+| Students forget passwords | An admin resets it with `scripts/set-password.ts`; sessions last 30 days, so resets are rare |
+| Someone registers with another person's email address | Joining needs the staff join link; staff see every member's name and email and can suspend |
 | Better Auth option names differ from this doc | Confirm against the installed version; the behaviour is the requirement |
