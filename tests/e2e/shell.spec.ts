@@ -158,3 +158,32 @@ test("security headers are set", async ({ request }) => {
   expect(headers["referrer-policy"]).toBe("strict-origin-when-cross-origin");
   expect(headers["content-security-policy"]).toContain("frame-ancestors 'none'");
 });
+
+test.describe("signed in, over HTTP", () => {
+  test.use({ storageState: ADMIN_STATE });
+
+  test("P7-24: signed-in pages are never cached", async ({ page }) => {
+    for (const path of ["/machines", "/console"]) {
+      const res = await page.request.get(path);
+      expect(res.status(), path).toBe(200);
+      expect(res.headers()["cache-control"], path).toContain("no-store");
+    }
+  });
+
+  test("P7-52: a cross-origin server action POST is refused before any action runs", async ({ page, baseURL }) => {
+    // A made-up action id: same-origin it's simply unknown; cross-origin the
+    // origin check (no serverActions.allowedOrigins) rejects it first.
+    const post = (origin: string) =>
+      page.request.post("/machines", {
+        headers: { origin, "next-action": "0".repeat(42), accept: "text/x-component", "content-type": "text/plain;charset=UTF-8" },
+        data: "[]",
+        maxRedirects: 0,
+      });
+    const sameOrigin = await post(baseURL!);
+    // tests/e2e/run.sh ignores the two server errors these probes log (the
+    // all-zero action id and the csrf-probe.invalid origin), and nothing else.
+    const crossOrigin = await post("https://csrf-probe.invalid");
+    expect(sameOrigin.status(), "unknown action, same origin").toBe(409);
+    expect(crossOrigin.status(), "cross origin").toBe(500);
+  });
+});
