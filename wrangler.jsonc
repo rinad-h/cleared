@@ -9,17 +9,14 @@
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-11-20",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
-  "secrets": { "required": ["BETTER_AUTH_SECRET", "BREVO_API_KEY", "EMAIL_FROM_ADDRESS"] },
+  "secrets": { "required": ["BETTER_AUTH_SECRET"] },
   "workers_dev": true,
   "preview_urls": false,
   "observability": { "enabled": true },
   "vars": {
     "ENVIRONMENT": "production",
     "PUBLIC_BASE_URL": "https://cleared.<your-subdomain>.workers.dev",
-    "BETTER_AUTH_URL": "https://cleared.<your-subdomain>.workers.dev",
-    "REQUIRE_EMAIL_VERIFICATION": "true",
-    "EMAIL_FROM_NAME": "Cleared",
-    "EMAIL_DAILY_CAP": "280"
+    "BETTER_AUTH_URL": "https://cleared.<your-subdomain>.workers.dev"
   },
   "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
   "services": [{ "binding": "WORKER_SELF_REFERENCE", "service": "cleared" }],

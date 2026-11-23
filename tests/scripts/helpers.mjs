@@ -26,7 +26,7 @@ export function sandbox() {
     },
     run(script, args = [], env = {}) {
       const clean = { ...process.env };
-      for (const k of ["WORKERS_SUBDOMAIN", "D1_DATABASE_ID", "BETTER_AUTH_SECRET", "BREVO_API_KEY", "CLOUDFLARE_API_TOKEN"]) delete clean[k];
+      for (const k of ["WORKERS_SUBDOMAIN", "D1_DATABASE_ID", "BETTER_AUTH_SECRET", "CLOUDFLARE_API_TOKEN"]) delete clean[k];
       const r = spawnSync(process.execPath, [join("scripts", script), ...args], { cwd: dir, env: { ...clean, ...env }, encoding: "utf8" });
       return { code: r.status, out: r.stdout + r.stderr };
     },

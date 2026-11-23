@@ -9,8 +9,6 @@ describe("test bindings", () => {
       ENVIRONMENT: "test",
       PUBLIC_BASE_URL: "http://cleared.test",
       BETTER_AUTH_URL: "http://cleared.test",
-      REQUIRE_EMAIL_VERIFICATION: "true",
-      EMAIL_DAILY_CAP: "280",
     });
   });
 });

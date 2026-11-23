@@ -52,10 +52,6 @@ test("spike pages render the not-found page outside development (no ENABLE_SPIKE
   }
 });
 
-// P0-72: the dev outbox route arrives in Phase 1. Then: 404 unless NODE_ENV is
-// development AND ENABLE_DEV_OUTBOX=1 (route test for all four combinations).
-test.fixme("/api/dev/outbox is 404 unless next dev and ENABLE_DEV_OUTBOX=1", async () => {});
-
 for (const width of WIDTHS) {
   test.describe(`at ${width} px`, () => {
     test.use({ viewport: { width, height: 740 } });

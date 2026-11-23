@@ -36,14 +36,10 @@ npx wrangler d1 migrations apply DB --local --persist-to "$D1_STATE_DIR" > "$tmp
 echo "E2E: starting next dev on $base_url"
 NEXT_DIST_DIR=.next-e2e \
 E2E=1 \
-ENABLE_DEV_OUTBOX=1 \
 ENVIRONMENT=test \
 PUBLIC_BASE_URL="$base_url" \
 BETTER_AUTH_URL="$base_url" \
-REQUIRE_EMAIL_VERIFICATION=true \
 BETTER_AUTH_SECRET="${BETTER_AUTH_SECRET:-e2e-only-secret-$(node -e 'console.log(crypto.randomUUID())')}" \
-BREVO_API_KEY=unused-in-e2e \
-EMAIL_FROM_ADDRESS=e2e@example.invalid \
 NEXT_TELEMETRY_DISABLED=1 \
   npx next dev -H 127.0.0.1 --port "$port" > "$tmp/server.log" 2>&1 &
 server_pid=$!

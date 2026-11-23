@@ -52,7 +52,7 @@ export const DAILY_LIMIT_MESSAGE =
  * (e.g. "D1_ERROR: Your account has exceeded D1's free tier daily row read
  * limit"), so it is matched by text. The match must name D1's row read/write
  * limit, or D1 together with a daily limit/quota: other "daily limit" messages
- * (an email provider's sending cap) are different problems.
+ * (another service's quota) are different problems.
  */
 function isD1DailyLimitMessage(message: string): boolean {
   if (/daily[\s_-]*(row[\s_-]*)?(read|write)[\s_-]*limit/i.test(message)) return true;

@@ -5,18 +5,16 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
  * Variables that the E2E harness (tests/e2e/run.sh) may override through the
  * process environment when running `next dev`. Wrangler's local bindings only
  * read wrangler.jsonc + .dev.vars, so this is how a throwaway E2E server gets
- * its own port, environment name and dev-outbox flag.
+ * its own port, environment name and secret.
  */
 const DEV_OVERRIDABLE = [
   "ENVIRONMENT",
   "PUBLIC_BASE_URL",
   "BETTER_AUTH_URL",
   "BETTER_AUTH_SECRET",
-  "REQUIRE_EMAIL_VERIFICATION",
-  "ENABLE_DEV_OUTBOX",
 ] as const;
 
-export type AppEnv = CloudflareEnv & { ENABLE_DEV_OUTBOX?: string; ENABLE_SPIKES?: string };
+export type AppEnv = CloudflareEnv & { ENABLE_SPIKES?: string };
 
 /**
  * The Worker's bindings and variables for this request.

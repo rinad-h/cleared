@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@opennextjs/cloudflare", () => ({
   getCloudflareContext: () => ({
-    env: { ENVIRONMENT: "production", PUBLIC_BASE_URL: "https://cleared.example", BREVO_API_KEY: "real-key" },
+    env: { ENVIRONMENT: "production", PUBLIC_BASE_URL: "https://cleared.example", ENABLE_SPIKES: "0" },
   }),
 }));
 
@@ -34,7 +34,7 @@ describe("getEnv()", () => {
 
   it("never lets process.env override keys outside the allowlist", () => {
     vi.stubEnv("NODE_ENV", "development");
-    vi.stubEnv("BREVO_API_KEY", "from-shell");
-    expect(getEnv().BREVO_API_KEY).toBe("real-key");
+    vi.stubEnv("ENABLE_SPIKES", "1");
+    expect(getEnv().ENABLE_SPIKES).toBe("0");
   });
 });
