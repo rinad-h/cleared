@@ -68,7 +68,7 @@ try {
 }
 
 if (wranglerConfig) {
-  for (const placeholder of ["<your-subdomain>", "<prod-database-id>", "<staging-database-id>"]) {
+  for (const placeholder of ["<your-subdomain>", "<database-id>"]) {
     if (![...stringValues(wranglerConfig)].some(([, v]) => v.includes(placeholder))) {
       fail(`wrangler.jsonc: placeholder ${placeholder} is missing; put your values in cleared.config.json instead`);
     }
@@ -90,7 +90,7 @@ if (wranglerConfig) {
 }
 
 const example = JSON.parse(readFileSync(join(root, "cleared.config.example.json"), "utf8"));
-const exampleValues = [example.workersSubdomain, example.d1?.production, example.d1?.staging];
+const exampleValues = [example.workersSubdomain, example.d1DatabaseId];
 if (!exampleValues.every((v) => typeof v === "string" && PLACEHOLDER.test(v))) {
   fail("cleared.config.example.json: must keep placeholder values only; your values go in cleared.config.json");
 }
@@ -104,9 +104,7 @@ if (existsSync(join(root, "cleared.config.json"))) {
     if (typeof own.workersSubdomain === "string" && !PLACEHOLDER.test(own.workersSubdomain)) {
       personal.push(`.${own.workersSubdomain}.workers.dev`);
     }
-    for (const id of [own.d1?.production, own.d1?.staging]) {
-      if (typeof id === "string" && UUID_OR_HEX32.test(id)) personal.push(id);
-    }
+    if (typeof own.d1DatabaseId === "string" && UUID_OR_HEX32.test(own.d1DatabaseId)) personal.push(own.d1DatabaseId);
   } catch {
     // render-wrangler.mjs reports a malformed file when it's used.
   }

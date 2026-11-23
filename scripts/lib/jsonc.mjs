@@ -28,7 +28,7 @@ export function parseJsonc(text) {
   return JSON.parse(stripJsonc(text));
 }
 
-/** Every string value in a parsed JSON tree, with its key path (e.g. "env.staging.vars.PUBLIC_BASE_URL"). */
+/** Every string value in a parsed JSON tree, with its key path (e.g. "vars.PUBLIC_BASE_URL"). */
 export function* stringValues(node, path = []) {
   if (typeof node === "string") yield [path.join("."), node];
   else if (Array.isArray(node)) for (const [i, v] of node.entries()) yield* stringValues(v, [...path, String(i)]);

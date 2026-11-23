@@ -13,7 +13,7 @@ import { loadPassLikeData } from "@/server/spikes/data";
  */
 async function SpikePassContent() {
   await connection();
-  // Outside development/staging this renders the not-found page before any data
+  // Outside development (unless ENABLE_SPIKES=1) this renders the not-found page before any data
   // is read. The page streams (Suspense, required under `next dev`), so the
   // status stays 200; the spike API routes answer a real 404.
   if (!spikesEnabled()) notFound();

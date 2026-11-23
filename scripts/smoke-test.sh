@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Post-deploy smoke test. The deploy scripts run it automatically.
 #
-#   bash scripts/smoke-test.sh staging | production
+#   bash scripts/smoke-test.sh                 the deployment (URL from cleared.config.json)
 #   bash scripts/smoke-test.sh <base-url> [expected-version] [expected-environment]
 #
 # Passes when /api/health answers status "ok" with the version this checkout
@@ -11,17 +11,13 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-target="${1:?usage: smoke-test.sh <staging|production|base-url> [expected-version] [expected-environment]}"
-case "$target" in
-  staging|production)
-    base_url="$(node scripts/render-wrangler.mjs --url "$target")"
-    expected_env="$target"
-    ;;
-  *)
-    base_url="$target"
-    expected_env="${3:-}"
-    ;;
-esac
+if [[ $# -eq 0 ]]; then
+  base_url="$(node scripts/render-wrangler.mjs --url)"
+  expected_env="production"
+else
+  base_url="$1"
+  expected_env="${3:-}"
+fi
 expected_version="${2:-$(node scripts/lib/build-sha.cjs)}"
 if [[ "$expected_version" == "unknown" ]]; then
   echo "Smoke test: can't tell which version was built (not a git checkout?). Pass it as the second argument." >&2

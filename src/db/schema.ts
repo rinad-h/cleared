@@ -3,7 +3,7 @@ import { sqliteTable, text } from "drizzle-orm/sqlite-core";
 /**
  * Database schema. Conventions (docs/phases/README.md §4.1): TEXT uuid primary
  * keys, INTEGER Unix-ms UTC `*_at` timestamps, INTEGER 0/1 booleans with CHECK,
- * TEXT + CHECK enums. Migrations are additive once production has data
+ * TEXT + CHECK enums. Migrations are additive once the deployment has real data
  * (drizzle/README.md).
  */
 

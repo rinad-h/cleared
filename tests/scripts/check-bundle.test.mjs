@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, test } from "node:test";
-import { UUID_A, UUID_B, sandbox } from "./helpers.mjs";
+import { UUID_A, sandbox } from "./helpers.mjs";
 
 let box;
 beforeEach(() => {
@@ -28,14 +28,14 @@ const cases = [
   ["a tracked .dev.vars", () => { box.write(".dev.vars", "X=1"); box.track(".dev.vars"); }, /\.dev\.vars must not be committed/],
   ["a committable cleared.config.json", () => box.write("sub/cleared.config.json", "{}"), /deployment values/],
   ["a database dump outside drizzle/", () => box.write("backup-2026-01-01.sql", "INSERT ..."), /SQL files outside drizzle/],
-  ["a real database id in wrangler.jsonc", () => box.write("wrangler.jsonc", wrangler().replace("<prod-database-id>", UUID_A)), /real id|placeholder <prod-database-id>/],
+  ["a real database id in wrangler.jsonc", () => box.write("wrangler.jsonc", wrangler().replace("<database-id>", UUID_A)), /real id|placeholder <database-id>/],
   ["a real subdomain in wrangler.jsonc", () => box.write("wrangler.jsonc", wrangler().replaceAll("<your-subdomain>", "acme")), /<your-subdomain>/],
   ["an account_id in wrangler.jsonc", () => box.write("wrangler.jsonc", wrangler().replace('"workers_dev": true,', '"workers_dev": true, "account_id": "abc",')), /account_id/],
   ["ENABLE_DEV_OUTBOX in wrangler.jsonc", () => box.write("wrangler.jsonc", wrangler().replace('"EMAIL_DAILY_CAP": "280"', '"EMAIL_DAILY_CAP": "280", "ENABLE_DEV_OUTBOX": "1"')), /ENABLE_DEV_OUTBOX/],
   ["the dev-only env override in the Worker", () => box.write(".open-next/server-functions/default/index.mjs", "throw new Error('cleared:dev-env-overrides must only run')"), /dev-only env override/],
   ["embedded .env values", () => box.write(".open-next/cloudflare/next-env.mjs", 'export const production = {"SECRET":"x"};'), /next-env\.mjs/],
   ["your subdomain in a committable file", () => {
-    box.write("cleared.config.json", JSON.stringify({ workersSubdomain: "acme", d1: { production: UUID_A, staging: UUID_B } }));
+    box.write("cleared.config.json", JSON.stringify({ workersSubdomain: "acme", d1DatabaseId: UUID_A }));
     box.write("docs/notes.md", "see https://cleared.acme.workers.dev");
   }, /deployment values from cleared\.config\.json/],
 ];

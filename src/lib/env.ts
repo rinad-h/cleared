@@ -16,7 +16,7 @@ const DEV_OVERRIDABLE = [
   "ENABLE_DEV_OUTBOX",
 ] as const;
 
-export type AppEnv = CloudflareEnv & { ENABLE_DEV_OUTBOX?: string };
+export type AppEnv = CloudflareEnv & { ENABLE_DEV_OUTBOX?: string; ENABLE_SPIKES?: string };
 
 /**
  * The Worker's bindings and variables for this request.

@@ -38,13 +38,13 @@ test("root redirects temporarily (307) to the machine list", async ({ page, requ
   await expect(page).toHaveURL(/\/machines$/);
 });
 
-test("spike API routes are 404 outside development and staging", async ({ request }) => {
+test("spike API routes are 404 outside development (no ENABLE_SPIKES)", async ({ request }) => {
   for (const path of ["/api/spike/hash", "/api/spike/rate-limit"]) {
     expect((await request.get(path)).status(), path).toBe(404);
   }
 });
 
-test("spike pages render the not-found page outside development and staging", async ({ page }) => {
+test("spike pages render the not-found page outside development (no ENABLE_SPIKES)", async ({ page }) => {
   for (const path of ["/spike/pass", "/spike/board"]) {
     await page.goto(path);
     await expect(page.getByRole("heading", { name: "Page not found" }), path).toBeVisible();
