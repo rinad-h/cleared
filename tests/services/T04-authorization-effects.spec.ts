@@ -1,5 +1,5 @@
 // PRD T04 (session part): revocation and suspension end sessions (Phase 4 §4.5, §7.3).
-// The console's "no longer authorized" flag is Phase 6.
+// Phase 6: the console's "no longer authorized" flag (#6–#8).
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import { machineSessions } from "@/db/schema";
@@ -7,7 +7,8 @@ import type { MemberActor } from "@/server/domain/actor";
 import { revokeGrant } from "@/server/services/grants";
 import { updateMachine } from "@/server/services/machines";
 import { updateMember } from "@/server/services/members";
-import { startSession } from "@/server/services/sessions";
+import { getConsole } from "@/server/services/console";
+import { endSession, startSession } from "@/server/services/sessions";
 import { actors, createMakerspace, resetIdentity } from "../helpers/actors";
 import { testDb } from "../helpers/db";
 import { resetCatalog, seed, type SeededCert, type SeededMachine } from "../helpers/seed";
@@ -114,5 +115,54 @@ describe("T04 — revocation and suspension end sessions", () => {
     const s = await start(student, printer);
     await updateMachine(db(), admin, { id: printer.id, retire: true }, T0 + 5 * MIN);
     expect(await row(s.id)).toMatchObject({ endedAt: T0 + 5 * MIN, endReason: "staff", endedByMemberId: admin.memberId });
+  });
+});
+
+describe("T04 — console: sessions whose member is no longer authorized (Phase 6)", () => {
+  const consoleAt = async (now: number) => {
+    const result = await getConsole(db(), staff, now);
+    if (result.notModified) throw new Error("expected a full answer");
+    return result.console;
+  };
+
+  it("#6 a grant expiring mid-session: the session stays active and is flagged with state expired", async () => {
+    await seed.grant(student, certA, { by: staff, expiresAt: T0 + 30 * MIN });
+    const s = await start(student, laser);
+    const before = await consoleAt(T0 + 25 * MIN);
+    expect(before.noLongerAuthorized).toEqual([]);
+    // validUntil is the grant's expiry: the poll gets a full answer the moment it lapses.
+    expect(before.validUntil).toBe(new Date(T0 + 30 * MIN).toISOString());
+
+    const after = await consoleAt(T0 + 31 * MIN);
+    expect(await row(s.id)).toMatchObject({ endedAt: null });
+    expect(after.activeSessions.map((a) => a.id)).toEqual([s.id]);
+    expect(after.noLongerAuthorized).toEqual([
+      {
+        sessionId: s.id,
+        member: { id: student.memberId, displayName: student.displayName },
+        machine: { id: laser.id, name: laser.name },
+        missing: [{ id: certA.id, name: "Cert A", state: "expired", since: new Date(T0 + 30 * MIN).toISOString() }],
+      },
+    ]);
+  });
+
+  it("#7 an admin adds a requirement the member lacks → flagged (never held)", async () => {
+    const admin = await actors.admin();
+    const certB = await seed.cert({ name: "Cert B" });
+    const s = await start(student, printer);
+    await updateMachine(db(), admin, { id: printer.id, requirementIds: [certB.id] }, T0 + 5 * MIN);
+    const c = await consoleAt(T0 + 6 * MIN);
+    expect(c.noLongerAuthorized).toMatchObject([{ sessionId: s.id, missing: [{ id: certB.id, state: "never", since: null }] }]);
+  });
+
+  it("#8 staff end a flagged session: end_reason staff; it leaves both lists", async () => {
+    await seed.grant(student, certA, { by: staff, expiresAt: T0 + 30 * MIN });
+    const s = await start(student, laser);
+    expect((await consoleAt(T0 + 45 * MIN)).noLongerAuthorized).toHaveLength(1);
+    await endSession(db(), staff, { sessionId: s.id }, T0 + 46 * MIN);
+    expect(await row(s.id)).toMatchObject({ endReason: "staff", endedByMemberId: staff.memberId });
+    const c = await consoleAt(T0 + 47 * MIN);
+    expect(c.activeSessions).toEqual([]);
+    expect(c.noLongerAuthorized).toEqual([]);
   });
 });
