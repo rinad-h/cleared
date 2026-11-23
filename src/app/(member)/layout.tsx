@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { Toaster } from "sonner";
+import { DemoBanner } from "@/components/layouts/demo-banner";
 import { HeaderAccount } from "@/components/layouts/header-account";
 import { MemberShell } from "@/components/layouts/member-shell";
 
@@ -10,6 +11,11 @@ import { MemberShell } from "@/components/layouts/member-shell";
 export default function MemberLayout({ children }: LayoutProps<"/">) {
   return (
     <MemberShell
+      banner={
+        <Suspense fallback={null}>
+          <DemoBanner />
+        </Suspense>
+      }
       headerEnd={
         <Suspense fallback={null}>
           <HeaderAccount side="member" />

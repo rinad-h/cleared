@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { Toaster } from "sonner";
 import { HeaderAccount } from "@/components/layouts/header-account";
 import { ConsoleDrawer, ConsoleSidebar } from "@/components/layouts/console-nav";
+import { DemoBanner } from "@/components/layouts/demo-banner";
 import { LegalFooter } from "@/components/legal/legal-footer";
 import { getOverdueCheckupCount } from "@/data/checkups";
 import { getOpenFaultCount } from "@/data/faults";
@@ -40,6 +41,9 @@ export default function ConsoleLayout({ children }: LayoutProps<"/console">) {
         </Suspense>
       </aside>
       <div className="flex min-w-0 flex-col">
+        <Suspense fallback={null}>
+          <DemoBanner />
+        </Suspense>
         <header className="flex h-14 items-center gap-2 border-b px-2 md:px-6 print:hidden">
           <div className="md:hidden">
             <Suspense fallback={<ConsoleDrawer />}>
@@ -56,9 +60,9 @@ export default function ConsoleLayout({ children }: LayoutProps<"/console">) {
         <main id="main" className="flex-1 px-4 py-6 md:px-8 print:p-0">
           {children}
         </main>
+        <LegalFooter className="border-t px-4 md:px-8 print:hidden" />
       </div>
       <Toaster position="top-center" richColors={false} closeButton />
     </div>
   );
-        <LegalFooter className="border-t px-4 md:px-8 print:hidden" />
 }
