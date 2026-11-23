@@ -1,10 +1,9 @@
 // PRD T06: the member status board (Phase 4 §7.3): buildBoard via getStatusBoard.
-import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
-import { machines } from "@/db/schema";
 import type { MemberActor } from "@/server/domain/actor";
 import { boardEtag, parseBoardEtag, type StatusBoard } from "@/server/domain/board";
 import { getStatusBoard } from "@/server/services/board";
+import { setMachineOutOfService } from "@/server/services/machine-status";
 import { getMachineByToken } from "@/server/services/pass";
 import { updateSettings } from "@/server/services/settings";
 import { actors, createMakerspace, resetIdentity } from "../helpers/actors";
@@ -40,10 +39,7 @@ describe("T06 — status board", () => {
     const busy = await seed.machine({ room, name: "Busy" });
     const down = await seed.machine({ room, name: "Down" });
     await seed.session(student, busy, { startedAt: T0 - 10 * MIN, minutes: 60 });
-    await db()
-      .update(machines)
-      .set({ status: "out_of_service", outOfServiceReason: "maintenance", statusChangedAt: T0 - DAY, statusNote: "New belt" })
-      .where(eq(machines.id, down.id));
+    await setMachineOutOfService(db(), staff, { machineId: down.id, reason: "maintenance", note: "New belt" }, T0 - DAY);
 
     const b = await board(student);
     expect(tile(b, "Free")).toMatchObject({ state: "available", inUse: null, outOfService: null });
