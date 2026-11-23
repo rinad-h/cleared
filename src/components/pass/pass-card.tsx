@@ -1,12 +1,13 @@
 import { ExternalLink, MapPin } from "lucide-react";
 import Link from "next/link";
 import { StatusBadge, type Status } from "@/components/status-badge";
-import { daysUntil, formatDate, formatDateTime } from "@/lib/format";
+import { daysUntil, formatDate, formatDateTime, formatTimeOrDay } from "@/lib/format";
 import type { OutOfServiceReason } from "@/server/domain/enums";
 import { EXPIRING_SOON_DAYS } from "@/server/domain/grants";
 import type { MissingCert, PassStatus } from "@/server/domain/pass";
 import type { MachineByToken } from "@/server/services/pass";
 import { LiveClock } from "./live-clock";
+import { SessionControls } from "./session-controls";
 
 type Recognized = Extract<MachineByToken, { recognized: true }>;
 
@@ -62,7 +63,40 @@ export function PassCard({ data }: { data: Recognized }) {
       <LiveClock serverNow={new Date(serverNow).toISOString()} timeZone={tz} />
 
       <PassBody data={data} />
+
+      <SessionPanel data={data} />
     </div>
+  );
+}
+
+/**
+ * The session part of the pass (Phase 4 §6.1). Times are formatted here, on
+ * the server, so the browser renders exactly the same text.
+ */
+function SessionPanel({ data }: { data: Recognized }) {
+  const { currentSession: session, actions, machine, makerspace, serverNow } = data;
+  const tz = makerspace.timezone;
+  const show =
+    session.state === "mine" || (session.state === "other" && data.pass.status !== "OUT_OF_SERVICE") || actions.canStart;
+  if (!show) return null;
+  const label = (ms: number | null) => (ms === null ? null : formatTimeOrDay(ms, serverNow, tz));
+  return (
+    <SessionControls
+      machineId={machine.id}
+      machineName={machine.name}
+      state={session.state}
+      sessionId={session.state === "mine" ? session.id : actions.otherSessionId}
+      startedLabel={label(session.startedAt)}
+      endLabel={label(session.expectedEndAt)}
+      canStart={actions.canStart}
+      requiresSupervisionAck={actions.requiresSupervisionAck}
+      durationOptions={actions.durationOptions}
+      defaultMinutes={actions.defaultMinutes}
+      canExtend={actions.canExtend}
+      atMax={session.state === "mine" && session.expectedEndAt !== null && session.expectedEndAt >= (session.maxEndAt ?? Infinity)}
+      canEnd={actions.canEnd}
+      canStaffEnd={actions.canStaffEnd}
+    />
   );
 }
 

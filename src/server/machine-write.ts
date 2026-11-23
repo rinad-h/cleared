@@ -5,6 +5,7 @@ import { machines } from "@/db/schema";
 import { batch, type Batchable } from "@/server/batch";
 import { ServiceError } from "@/server/domain/errors";
 import { newToken } from "@/server/domain/identity";
+import { expireSessionsSql } from "@/server/domain/sessions";
 import { SETTINGS_ID } from "@/server/version";
 
 /**
@@ -12,8 +13,9 @@ import { SETTINGS_ID } from "@/server/version";
  *
  *   read machine (token T0) → build a plan → one atomic batch:
  *     1. UPDATE machines SET …, write_token = T1 WHERE id = :id AND write_token = T0 [AND plan.where]
- *     2. plan.guarded(guard): statements guarded by `EXISTS (… write_token = T1)`
- *     3. UPDATE settings SET data_version = data_version + 1 (guarded the same way)
+ *     2. close this machine's expired-but-open sessions (lazy expiry, Phase 4 §4.1), guarded
+ *     3. plan.guarded(guard): statements guarded by `EXISTS (… write_token = T1)`
+ *     4. UPDATE settings SET data_version = data_version + 1 (guarded the same way)
  *   statement 1 changed 0 rows →
  *     token moved on   → someone else wrote first → retry (up to 3 times) → CONFLICT_RETRY
  *     token unchanged  → plan.where refused it    → plan.refused()
@@ -78,7 +80,8 @@ export async function withMachineWrite<T>(
       .where(and(eq(machines.id, machineId), eq(machines.writeToken, t0), plan.where));
     const bump = sql`UPDATE settings SET data_version = data_version + 1 WHERE id = ${SETTINGS_ID} AND ${guard}`;
 
-    const [first] = await batch(db, [swap, ...(plan.guarded?.(guard) ?? []), bump]);
+    const expire = expireSessionsSql(now, { machineId }, guard);
+    const [first] = await batch(db, [swap, expire, ...(plan.guarded?.(guard) ?? []), bump]);
     if (first.meta.changes === 1) return plan.result;
 
     const after = await db

@@ -1,4 +1,4 @@
-import type { BrowserContext, Page } from "@playwright/test";
+import { expect, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { join } from "node:path";
 
 /**
@@ -50,4 +50,28 @@ export async function fillSignIn(page: Page, email: string, password: string) {
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Sign in" }).click();
+}
+
+/**
+ * Join through the current join link. join.spec.ts may regenerate the link
+ * while this runs, so a refused link is re-read once more.
+ */
+export async function joinAs(browser: Browser, admin: Page, baseURL: string, name: string, email: string, password: string) {
+  const context = await browser.newContext({ viewport: { width: 375, height: 740 } });
+  await apiSignUp(context, baseURL, name, email, password);
+  const page = await context.newPage();
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await admin.goto("/console/settings");
+    const joinPath = new URL(await admin.getByLabel("Current join link").inputValue()).pathname;
+    await page.goto(joinPath);
+    const join = page.getByRole("button", { name: "Join" });
+    const invalid = page.getByRole("heading", { level: 1, name: "This join link isn't valid any more" });
+    await expect(join.or(invalid)).toBeVisible();
+    if (await join.isVisible()) {
+      await join.click();
+      await expect(page).toHaveURL(/\/machines$/);
+      return { context, page };
+    }
+  }
+  throw new Error("could not join");
 }

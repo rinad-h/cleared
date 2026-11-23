@@ -15,6 +15,10 @@ export default defineConfig({
   reporter: "list",
   // Dev mode compiles each route on first visit.
   timeout: 60_000,
+  // Assertions wait up to 15 s (default 5 s): under parallel load, a `next dev`
+  // server action + redirect + server render (e.g. Join → the status board)
+  // can take longer than 5 s.
+  expect: { timeout: 15_000 },
   use: {
     baseURL: process.env.E2E_BASE_URL ?? "http://127.0.0.1:3100",
     trace: "retain-on-failure",

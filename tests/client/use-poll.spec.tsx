@@ -68,6 +68,25 @@ describe("usePoll", () => {
     expect(result.current.data).toEqual({ n: 1 });
   });
 
+  it("with server-rendered data and its ETag, shows it at once and first polls after one interval", async () => {
+    replies.push({ status: 304 }, { status: 200, body: { n: 2 }, etag: '"b"' });
+    const { result } = renderHook(() =>
+      usePoll<{ n: number }>("/api/board", { initialData: { n: 1 }, initialEtag: '"a"' }),
+    );
+    await flush();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result.current.data).toEqual({ n: 1 });
+
+    await advance(30 * SEC);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(headersOf(0)["If-None-Match"]).toBe('"a"');
+    expect(result.current.data).toEqual({ n: 1 });
+    expect(result.current.lastUpdated).toBeInstanceOf(Date);
+
+    await advance(30 * SEC);
+    expect(result.current.data).toEqual({ n: 2 });
+  });
+
   it("slows to 120 s after 10 min without interaction, and speeds up on activity", async () => {
     renderHook(() => usePoll("/api/board"));
     await flush();

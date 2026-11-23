@@ -416,7 +416,7 @@ Service tests in `tests/services/` (Vitest + `@cloudflare/vitest-plugin`, real l
 
 ## 8. Exit criteria
 
-- [ ] T05, T06 and the T04 session cases green; E2E green.
+- [x] T05, T06 and the T04 session cases green; E2E green.
 - [ ] Demo step 7 works on the deployed app.
 - [ ] Measured board cost recorded in `technologies.md` §13.1: rows read for 304 and 200 at the demo data size.
 - [ ] Board and session `cpuTime` recorded on the deployment.
@@ -447,3 +447,27 @@ Service tests in `tests/services/` (Vitest + `@cloudflare/vitest-plugin`, real l
 | Clock edge cases (session exactly at `expected_end_at`) | Strict `now < expected_end_at` everywhere; ±1 ms tests |
 | Guarded-insert SQL drifts from `computePass` | Tests 12–13 cross-check; both use the same validity rule (`isGrantValid` / `validGrantSql()`, tested to agree in Phase 3) |
 | Students forget to tap Done | Auto-expiry at the expected time (PRD); "est." wording everywhere |
+
+---
+
+## 11. Implementation notes (decided while building)
+
+| Decision | Detail | Date |
+|---|---|---|
+| Lazy expiry inside `withMachineWrite` | Every machine write batch (sessions, machine edits, retire, and Phase 5's faults) closes that machine's expired-but-open sessions as statement 2, guarded by the new write token, so §4.1's "on the next write to that machine" holds everywhere without each service remembering it | 2026-11-23 |
+| Start result handling | After `withMachineWrite` returns, the service reads the new session by id: missing means the token swap won but the guarded insert refused → `PASS_CHANGED`. A unique-index violation on `machine_sessions.machine_id` (the partial index) → `MACHINE_BUSY`; on `client_request_id` → the concurrent replay's session. A replay by a different member or machine → `IDEMPOTENCY_MISMATCH`. The `data_version` bump is the helper's (guarded by the token), so a refused insert still bumps once: the machine row's token did change | 2026-11-23 |
+| New error codes | `NOT_CLEARED` (403, `details.passStatus`), `SUPERVISION_ACK_REQUIRED`, `ALREADY_IN_SESSION` (`details.sessionId`), `PASS_CHANGED`, `SESSION_ENDED`, `SESSION_AT_MAX` (409). `MACHINE_BUSY` carries `details.since` / `estFreeAt` (ISO), never who | 2026-11-23 |
+| `supervision_acknowledged` | Stored as sent. Staff and admins don't need it (their pass is CLEARED), so their sessions on supervised machines record `0` | 2026-11-23 |
+| Extend | Re-checks inside the `UPDATE` that the machine is available, the member active and every requirement held (same SQL as the start insert, `holdsAllRequirementsSql()`). A double-tapped +15 computes the same new end twice, so it extends once | 2026-11-23 |
+| End | Staff ending someone else's session re-checks inside the `UPDATE` that the actor is still active staff. The owner's `ended_by_member_id` is themselves; an `expired` close has none | 2026-11-23 |
+| T04 #3 superseded | The spec expected a session to continue when one of two valid grants for A is revoked. Phase 3 §11 decided that revoking revokes **every** valid grant of that certification, so the session ends; the test asserts that. The `NOT EXISTS (valid grant)` guard in step 3 is still there (it's also what makes a refused revoke end nothing) | 2026-11-23 |
+| Revoke and suspension batches | Revoke: expire the member's lapsed sessions → revoke → end affected active sessions (guarded by "no valid grant remains") → bump. Suspension: only when the status really changes to `suspended`, the end statement is guarded by `status_changed_at = now AND status_changed_by = actor`, so a refused suspension ends nothing. Retire: `end_reason = 'staff'`, guarded by the write token | 2026-11-23 |
+| Board 304 path | One 1-row read (`settings.data_version`); the ETag's member id, role and `validUntil` are checked before it. Malformed or foreign ETags get a full answer. The 200 path runs the global sweep, then one batch of six reads (settings, rooms, live machines, all requirements, open sessions, the viewer's grants) | 2026-11-23 |
+| Board layout | The member shell is `max-w-2xl` (672 px), so the board uses 1 column below 480 px and 2 above; the spec's 3–4 desktop columns would be about 210 px wide inside it | 2026-11-23 |
+| `usePoll` initial data | New `initialData` / `initialEtag` options: the server-rendered board is shown at once and the first poll waits one interval and sends that ETag (normally a 304). Only used for the first url | 2026-11-23 |
+| Times on the pass | Session times are formatted on the server (`formatTimeOrDay`: "2:14 PM", or "Thu 2:14 PM" on another day) and passed to `<SessionControls>` as text, so hydration can't mismatch. The board formats in the browser (it re-renders on polls) with `suppressHydrationWarning` on time text | 2026-11-23 |
+| `clientRequestId` for Start | Created on the first tap and kept until that attempt finishes (kept for a `CONFLICT_RETRY` retry), rather than at mount: same idempotency, no random value in the server render | 2026-11-23 |
+| Route-handler test | `tests/routes/status-board.spec.ts` runs the real handler and services on the test D1, replacing only `getActor()` (and `getDb()`) with a mock, instead of minting a Better Auth cookie in workerd. The app still has no auth bypass | 2026-11-23 |
+| P4-13 moved to Phase 7 | Drizzle's batched reads don't expose D1's `rows_read`, so the dev-only logging is left to the Phase 7 quota audit (`EXPLAIN QUERY PLAN` + Workers Logs on the deployment). The structural cost is above: 304 ≈ 1 row, 200 ≈ rooms + machines + requirements + open sessions + the viewer's grants | 2026-11-23 |
+| Staff see a session id on the pass | Only staff and admins viewing someone else's session get its id (to end it). Members never do; the board never includes any | 2026-11-23 |
+| E2E timing | The warm-up can't compile a signed-in page, so `auth.spec.ts` waits up to 30 s for the redirect to Setup on the first visit to `/machines`. With the board rendering real data and the extra session spec running in parallel, Join → board redirects sometimes took over 5 s on `next dev`, so `playwright.config.ts` raises the assertion timeout to 15 s | 2026-11-23 |

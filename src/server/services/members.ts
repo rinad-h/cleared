@@ -9,7 +9,9 @@ import type { Actor } from "@/server/domain/actor";
 import type { MemberStatus, Role } from "@/server/domain/enums";
 import { ServiceError } from "@/server/domain/errors";
 import { parse } from "@/server/domain/parse";
+import { expireSessionsSql } from "@/server/domain/sessions";
 import { batch } from "@/server/batch";
+import { endSessionsForAuthorizationSql } from "@/server/services/sessions";
 import { bumpVersion } from "@/server/version";
 
 export type MemberListItem = {
@@ -213,6 +215,16 @@ export async function updateMember(
            OR (SELECT COUNT(*) FROM members AS o
                WHERE o.role = 'admin' AND o.status = 'active' AND o.id <> ${id}) >= 1
         )`,
+    // FR-08: suspension ends all of the member's active sessions (Phase 4 §4.5),
+    // only if this statement really suspended them.
+    ...(newStatus === "suspended" && statusChanges
+      ? [
+          expireSessionsSql(now, { memberId: id }),
+          endSessionsForAuthorizationSql(id, actor.memberId, now, "all",
+            sql`EXISTS (SELECT 1 FROM "members" AS "t" WHERE "t"."id" = ${id} AND "t"."status" = 'suspended'
+                  AND "t"."status_changed_at" = ${now} AND "t"."status_changed_by_member_id" = ${actor.memberId})`),
+        ]
+      : []),
     bumpVersion(db),
   ]);
 

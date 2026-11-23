@@ -49,7 +49,7 @@ export default defineConfig(async () => {
           resolve: { alias },
           test: {
             name: "workers",
-            include: ["tests/unit/**/*.spec.ts", "tests/services/**/*.spec.ts"],
+            include: ["tests/unit/**/*.spec.ts", "tests/services/**/*.spec.ts", "tests/routes/**/*.spec.ts"],
             setupFiles: ["./tests/setup.ts"],
             allowOnly: false,
             // Lets tests read stylesheets as text (`?raw`), e.g. the status-token contrast check.
