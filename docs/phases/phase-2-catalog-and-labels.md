@@ -148,7 +148,7 @@ Guarding the requirement change with the token matters because a session start (
 
 - `qr_token = randomToken(16)`: 128 random bits, base64url, 22 chars (`src/server/domain/tokens.ts`). Created once at machine creation.
 - Rename, move and reprint **reuse** the token. There's no regenerate operation (P1). If a label is misused, retire the machine and re-add it (PRD 5.3).
-- URL format: `${PUBLIC_BASE_URL}/m/${qr_token}`. **Always built on the server from `PUBLIC_BASE_URL`** (read from `getCloudflareContext().env`), never from the request host. Labels never use the request's own origin, so labels printed while browsing staging or localhost can't point at the wrong place by accident.
+- URL format: `${PUBLIC_BASE_URL}/m/${qr_token}`. **Always built on the server from `PUBLIC_BASE_URL`** (read with `getEnv()` from `src/lib/env.ts`, so E2E overrides apply; `technologies.md` §5.1), never from the request host. Labels never use the request's own origin, so labels printed while browsing staging or localhost can't point at the wrong place by accident.
 
 ---
 
@@ -265,7 +265,7 @@ File: `src/app/(member)/m/[token]/page.tsx`.
 
 ### 7.4 Tests
 
-Service tests run in Vitest with `@cloudflare/vitest-pool-workers` (real `workerd`, fresh local D1), calling services directly with actors and an explicit `now`.
+Service tests run in Vitest with `@cloudflare/vitest-plugin` (real `workerd`, fresh local D1), calling services directly with actors and an explicit `now`.
 
 | ID | Test | Covers |
 |---|---|---|

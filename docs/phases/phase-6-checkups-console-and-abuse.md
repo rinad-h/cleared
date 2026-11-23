@@ -344,5 +344,5 @@ All service tests call services directly with actors from the `actors` helper an
 |---|---|
 | The console polls on several staff screens all day | ETag; visible-only polling; back-off (`technologies.md` §13) |
 | Rate-limit binding semantics (per location, eventual) let bursts through | Acceptable for a pilot (PRD: "basic per-instance limit"); shared limits are P1 |
-| Permission drift as actions and services are added later | Action-wrapper sweep and the T10 service list fail CI when something is missing |
+| Permission drift as actions and services are added later | Action-wrapper sweep and the T10 service list fail `npm test` (and so `npm run check`) when something is missing |
 | Console home render is heavy with many active sessions | First render and poll payload capped (e.g. 100 active sessions); CPU checked in Phase 7 |

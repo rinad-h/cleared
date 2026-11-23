@@ -29,7 +29,7 @@
 8. [Frontend](#8-frontend)
 9. [Server code structure](#9-server-code-structure)
 10. [Testing](#10-testing)
-11. [Tooling, CI/CD and deployment](#11-tooling-cicd-and-deployment)
+11. [Tooling, checks and deployment](#11-tooling-checks-and-deployment)
 12. [Designing for D1 instead of PostgreSQL](#12-designing-for-d1-instead-of-postgresql)
 13. [Free-tier budget and capacity planning](#13-free-tier-budget-and-capacity-planning)
 14. [What happens at a limit, and how we watch for it](#14-what-happens-at-a-limit-and-how-we-watch-for-it)
@@ -111,12 +111,12 @@ Versions are a known-good combination on Workers Free as of November 2026. Pin e
 | QR codes | **qrcode** | 1.5 | Label sheet QR SVGs, **rendered in the browser** | $0 |
 | Rate limiting | **Workers Rate Limiting binding** + Better Auth's built-in limiter | — | FR-19 action limits; sign-in/sign-up brute-force limits | $0 (binding availability on Free verified in Phase 0) |
 | Logs | **Workers Logs** | — | Errors, CPU time per request | 200,000 events/day, 3-day retention (pricing changes Dec 1, 2026) |
-| Unit / service tests | **Vitest** + **@cloudflare/vitest-pool-workers** | — | Domain and service tests against a real local D1 in `workerd` | $0, uses no Cloudflare quota |
+| Unit / service tests | **Vitest** + **@cloudflare/vitest-plugin** (formerly `@cloudflare/vitest-pool-workers`) | 4.1 / 1.9 | Domain and service tests against a real local D1 in `workerd` | $0, uses no Cloudflare quota |
 | E2E tests | **Playwright** | — | Browser acceptance tests against an isolated local D1 (`tests/e2e/run.sh`) | $0 |
 | Lint / types | **ESLint** (`eslint-config-next`) + **TypeScript** strict | 9 / 5 | — | $0 |
 | Package manager | **npm** | — | Installs and lockfile | $0 |
 | CLI | **Wrangler** | 4.x | Local D1, migrations, deploys, secrets, `wrangler tail` | $0 |
-| Source control & CI | **GitHub** + **GitHub Actions** | — | Repo, PR checks, deploys | Public repo: unlimited minutes; private: 2,000 min/month |
+| Source control | **GitHub** (or any git host) | — | Repo, one pull request per phase. **No CI/CD:** checks and deploys run locally (§11.3) | Free |
 
 **Total monthly cost: $0.00.**
 
@@ -166,8 +166,7 @@ Checked November 2026 (sources in §19). Daily Cloudflare limits reset at **00:0
 | **Rate Limiting binding** | Usage | No separate published limit; periods of **10 s or 60 s** only; counters per Cloudflare location (best-effort) | — | FR-19 action limits; D1 fallback if unavailable (§4.4) |
 | **Workers Logs** | Events | **200,000 / day**, **3-day** retention (pricing change announced for **Dec 1, 2026**) | Logging stops for the day; the app keeps working | No noisy logging; sampling if needed (§4.5) |
 | **`workers.dev`** | Subdomains | **1 per account** (each Worker gets `<name>.<subdomain>.workers.dev`) | — | Pick once; labels encode it (§4.6) |
-| **Workers Builds** (optional) | Build minutes | 3,000 / month, 1 build at a time, 20-min timeout | Builds wait until next month | GitHub Actions is the default |
-| **Cloudflare API** (used by Wrangler/CI) | Requests | 1,200 per 5 minutes per user | 429 for 5 min | Only deploys and migrations call it |
+| **Cloudflare API** (used by Wrangler) | Requests | 1,200 per 5 minutes per user | 429 for 5 min | Only deploys and migrations call it |
 
 #### Email
 
@@ -180,16 +179,14 @@ Checked November 2026 (sources in §19). Daily Cloudflare limits reset at **00:0
 | | Sender | Free-mail senders rewritten to a `brevosend.com`-style address; "Sent with Brevo" footer | — | Display name "Cleared" + `replyTo` (§7.2) |
 | | Account | New accounts may need approval before sending | Emails don't send | Create the account early (Phase 0) |
 
-#### Source control and CI
+#### Source control
 
 | Technology | Limit (free) | Value | When exceeded | Where Cleared deals with it |
 |---|---|---|---|---|
 | **GitHub** (repo) | Repos | Unlimited public and private | — | — |
 | | Size | Files ≤ 100 MB (hard); repo ideally < 1 GB | Push refused | No binaries or backups in the repo |
-| **GitHub Actions** | Minutes | **Public repo: unlimited** (standard runners). **Private repo: 2,000 Linux minutes/month** | Private: jobs blocked until next month (no card on file, so never billed) | ~4 min per CI run; E2E only on `main` / labelled PRs |
-| | Artifact + package storage | 500 MB (private repos); artifacts kept 90 days by default | Uploads fail | Don't upload large artifacts; never upload DB exports |
-| | Cache | 10 GB per repository | Oldest entries evicted | npm cache only |
-| | Larger runners | **Never free** | Billed | Use standard `ubuntu-latest` only |
+
+No CI/CD service is used: `npm run check` and the deploy scripts run on the developer's machine (§11.3).
 
 #### Libraries and tools (no usage limits)
 
@@ -209,8 +206,8 @@ These run in our code or on your machine. They have **no usage quotas or account
 | qrcode | MIT | Runs in the browser |
 | TypeScript | Apache-2.0 | — |
 | ESLint | MIT | — |
-| Vitest, @cloudflare/vitest-pool-workers | MIT | Tests use local D1, **no Cloudflare quota** |
-| Playwright | Apache-2.0 | Runs locally/CI, **no Cloudflare quota** |
+| Vitest, @cloudflare/vitest-plugin | MIT | Tests use local D1, **no Cloudflare quota** |
+| Playwright | Apache-2.0 | Runs locally, **no Cloudflare quota** |
 | Wrangler | MIT or Apache-2.0 | Free CLI. **Remote** D1 commands count toward D1 quotas |
 | Node.js, npm | MIT / Artistic-2.0 | npm registry downloads are free |
 
@@ -280,7 +277,7 @@ OpenNext puts the build's static files in `.open-next/assets`, served by Workers
 
 ### 4.7 `wrangler.jsonc`
 
-Placeholders (`<your-subdomain>`, database IDs) are filled in per deployment (`setup-and-deploy.md` §7).
+The committed file keeps the placeholders (`<your-subdomain>`, database IDs); `npm run check` rejects real values in it. Each deployment's values live in the git-ignored `cleared.config.json`, and `scripts/render-wrangler.mjs` renders them into a git-ignored `wrangler.deploy.jsonc` that every remote command uses (`setup-and-deploy.md` §7).
 
 ```jsonc
 {
@@ -350,8 +347,8 @@ Placeholders (`<your-subdomain>`, database IDs) are filled in per deployment (`s
 
 ### 5.1 How it fits together
 
-- `@opennextjs/cloudflare` builds the Next.js output into `.open-next/worker.js` + `.open-next/assets`. `npm run deploy` = `opennextjs-cloudflare build && opennextjs-cloudflare deploy`.
-- Bindings (D1, rate limiter, vars, secrets) are read with `getCloudflareContext().env` (in `src/db/index.ts` and `src/lib/auth.ts`).
+- `@opennextjs/cloudflare` builds the Next.js output into `.open-next/worker.js` + `.open-next/assets`. `npm run deploy` runs `scripts/deploy.sh`: render `wrangler.deploy.jsonc` → `opennextjs-cloudflare build` → bundle scan → `opennextjs-cloudflare deploy` → smoke test (§11.3).
+- **Bindings** (`DB`, `RL_ACTIONS`) are read with `getCloudflareContext().env` (e.g. `src/db/index.ts`). **Vars and secrets** (`PUBLIC_BASE_URL`, `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `ENVIRONMENT`, `REQUIRE_EMAIL_VERIFICATION`, `ENABLE_DEV_OUTBOX`, …) are read with **`getEnv()` from `src/lib/env.ts`**: it returns the same bindings, but under `next dev` it applies the E2E harness's `process.env` overrides (random port, `ENVIRONMENT=test`). Reading vars straight from `getCloudflareContext().env` makes E2E sign-up and the test-only rate-limit switch silently use the wrong values.
 - In dev, `initOpenNextCloudflareForDev()` in `next.config.ts` gives `next dev` the same bindings against local D1.
 - `open-next.config.ts` stays the default `defineCloudflareConfig()`: **no incremental cache, no R2, no KV**. Every page is dynamic (it depends on who's signed in), so ISR caching would add nothing.
 
@@ -414,7 +411,7 @@ Roles (`admin`/`staff`/`member`) and suspension **are not Better Auth's job**. T
 | **Forgot password** | `requestPasswordReset` → token in `verification` → reset email → the user sets a new password (hashed again) → other sessions can be revoked |
 | **Change password** | Verify the current password (hash) → hash the new one |
 
-Next.js specifics: `getAuth()` builds the instance **per request** from `getCloudflareContext().env`; the handler is mounted at `src/app/api/auth/[...all]/route.ts`; the `nextCookies()` plugin (last in the list) lets server actions set cookies; session reads go inside `<Suspense>`.
+Next.js specifics: `getAuth()` builds the instance **per request** from `getEnv()` (vars and secrets, so the E2E overrides apply) and `getDb()`; the handler is mounted at `src/app/api/auth/[...all]/route.ts`; the `nextCookies()` plugin (last in the list) lets server actions set cookies; session reads go inside `<Suspense>`.
 
 ### 6.3 Configuration (`src/lib/auth.ts`)
 
@@ -422,7 +419,7 @@ Option names follow Better Auth 1.7; confirm against the installed version.
 
 ```ts
 export function getAuth() {
-  const { env } = getCloudflareContext();
+  const env = getEnv();          // src/lib/env.ts: not getCloudflareContext().env (§5.1)
   const db = getDb();
   return betterAuth({
     appName: "Cleared",
@@ -498,7 +495,7 @@ export function getAuth() {
 If email is down, an admin can set a temporary password for a member:
 
 1. On a laptop, run `npx tsx scripts/set-password.ts <email> <temp-password>`. It hashes locally with `hashPassword` from `better-auth/crypto` (as the seed script does), so it uses no Worker CPU.
-2. The script runs `wrangler d1 execute cleared-prod --remote --command "UPDATE account SET password = ? WHERE provider_id = 'credential' AND user_id = (SELECT id FROM user WHERE email = ?)"`.
+2. The script runs `node scripts/render-wrangler.mjs` first, then the equivalent of `npm run remote -- d1 execute cleared-prod --remote --command "UPDATE account SET password = ? WHERE provider_id = 'credential' AND user_id = (SELECT id FROM user WHERE email = ?)"` (the committed `wrangler.jsonc` only has placeholder database IDs).
 3. The member signs in and changes the password.
 
 ### 6.7 No test-auth stub
@@ -540,7 +537,7 @@ Email is used **only** for verification and password-reset links in the MVP. Fau
 ### 7.3 Dev and test email
 
 - `ConsoleEmailSender` (when `ENVIRONMENT` is `development` or `test`): logs "verification email for <redacted>" and stores the link in an **in-memory dev outbox**.
-- `GET /api/dev/outbox?email=…` returns the latest link, **only** when `process.env.NODE_ENV === "development"` **and** `ENABLE_DEV_OUTBOX=1`. Otherwise the route returns 404. A CI check fails the build if the production bundle contains `dev/outbox` handling code that isn't behind the guard. Playwright uses this to click verification links.
+- `GET /api/dev/outbox?email=…` returns the latest link, **only** when `process.env.NODE_ENV === "development"` **and** `ENABLE_DEV_OUTBOX=1`. Otherwise the route returns 404. The guard is enforced by: `wrangler.jsonc` never containing `ENABLE_DEV_OUTBOX` and the client bundle never containing it (both checked by `npm run check` and every deploy), and a Phase 1 route test covering all four `NODE_ENV` × `ENABLE_DEV_OUTBOX` combinations. Phase 1 adds a server-bundle marker check for the outbox handler, like the one for `getEnv()`'s dev-only branch. Playwright uses the outbox to click verification links.
 
 ---
 
@@ -608,10 +605,12 @@ src/
 
 | Kind | Tool | Runs | Covers |
 |---|---|---|---|
-| Unit | Vitest | Node | Pass engine, time maths, permission matrix, Zod schemas |
-| **Service integration [A]** | Vitest + `@cloudflare/vitest-pool-workers` | Inside `workerd` with a real local D1, migrations applied, isolated per test file | PRD **T02–T10**: call services with actors of every role, control `now`, run concurrent calls with `Promise.all` |
+| Unit | Vitest | `workerd` (same project as the service tests) | Pass engine, time maths, permission matrix, Zod schemas |
+| Client hooks/components | Vitest + Testing Library | happy-dom (`tests/client/`) | `usePoll`, `AutoRefresh`, small interactive components |
+| Scripts | `node:test` | Node (`tests/scripts/`) | `render-wrangler`, `check-bundle`: each guard proven to fail on a planted value |
+| **Service integration [A]** | Vitest + `@cloudflare/vitest-plugin` | Inside `workerd` with a real local D1, migrations applied, isolated per test file | PRD **T02–T10**: call services with actors of every role, control `now`, run concurrent calls with `Promise.all` |
 | Route handlers | Same pool | `workerd` | Board/console JSON shape, privacy, ETag/304 |
-| **E2E** | Playwright against `next dev` on a throwaway D1 (`tests/e2e/run.sh`) | Local / CI | Real sign-up → verify → sign-in; the PRD 5.1 10-step demo; 375 px and 320 px layouts; axe accessibility checks |
+| **E2E** | Playwright against `next dev` on a throwaway D1 (`tests/e2e/run.sh`) | Local | Real sign-up → verify → sign-in; the PRD 5.1 10-step demo; 375 px and 320 px layouts; axe accessibility checks |
 | **Manual [M]** | Physical phones + printed labels | Staging, production | **T01, T11, T12**; CPU spikes S1/S2 |
 
 - E2E uses **`@playwright/test` (Node)** so tests share TypeScript types with the app.
@@ -620,7 +619,7 @@ src/
 
 ---
 
-## 11. Tooling, CI/CD and deployment
+## 11. Tooling, checks and deployment
 
 ### 11.1 Tooling
 
@@ -630,29 +629,36 @@ Node.js 22+, npm, TypeScript (strict), ESLint (`eslint-config-next`), Wrangler 4
 
 | Script | Does |
 |---|---|
-| `dev` | `next dev` with local D1 |
+| `dev` | `next dev -H 127.0.0.1` with local D1 (loopback only) |
 | `build` | `next build --webpack` (for OpenNext compatibility) |
 | `build:worker` | `opennextjs-cloudflare build` |
-| `deploy:first` | `scripts/deploy-first.sh`: first deploy with generated `BETTER_AUTH_SECRET` + `BREVO_API_KEY` / `EMAIL_FROM_ADDRESS` from the shell, via `--secrets-file` |
 | `preview` | `opennextjs-cloudflare build && opennextjs-cloudflare preview` (real `workerd`) |
-| `deploy` / `deploy:staging` | Build + `opennextjs-cloudflare deploy [--env staging]` |
+| `check` | Everything that must pass before a deploy (§11.3) |
+| `config:render` | Write `wrangler.deploy.jsonc` from `wrangler.jsonc` + `cleared.config.json` |
+| `deploy` / `deploy:staging` | `scripts/deploy.sh production\|staging`: render config → build → bundle scan → deploy → smoke test. Extra arguments are rejected |
+| `deploy:first` / `deploy:first:staging` | The same with `--first`: prompts for the Brevo key, generates `BETTER_AUTH_SECRET`, uploads secrets with `--secrets-file`; refuses if the environment already has them |
+| `remote` | `wrangler --config wrangler.deploy.jsonc …` (remote D1 commands) |
 | `lint`, `typecheck` | ESLint; `next typegen && tsc --noEmit` |
-| `test` | Vitest (unit + service tests in `workerd`) |
+| `test` | Vitest (unit + service tests in `workerd`, client tests in happy-dom) + `node --test` script tests |
+| `cf-typegen` | Regenerate `cloudflare-env.d.ts` (`scripts/cf-typegen.mjs`, deterministic) |
 | `test:e2e` | Playwright on an isolated D1 |
 | `db:generate` | drizzle-kit migration from `schema.ts` |
 | `db:migrate` / `db:migrate:staging` / `db:migrate:remote` | Apply migrations locally / staging / production |
 | `db:seed` | Clearly fake demo data (local or staging) |
 
-### 11.3 CI/CD (GitHub Actions)
+### 11.3 Checks and deploys (local, no CI/CD)
 
-| Workflow | Trigger | Steps |
-|---|---|---|
-| `ci.yml` | Every PR and push | `npm ci` → lint → typecheck → `test` → `build` → OpenNext build → bundle checks (no dev-outbox code unguarded, no secrets) → E2E (on `main` and on PRs labelled `e2e`) |
-| `deploy.yml` | Push to `main` → staging; manual approval → production | `wrangler d1 migrations apply DB --remote [--env staging]` → `npm run deploy[:staging]` → smoke test `GET /api/health` returns the commit SHA |
+There's **no CI/CD service** (decided 2026-11-22). The checks a CI server would run are one local command, and deploys run from the developer's machine:
 
-- GitHub secrets: `CLOUDFLARE_API_TOKEN` (Workers Scripts: Edit, D1: Edit, this account only), `CLOUDFLARE_ACCOUNT_ID`.
+| Command | Steps |
+|---|---|
+| `npm run check` | Repo guards (no `.env*` tracked, no `ENABLE_DEV_OUTBOX` in `wrangler.jsonc`, placeholders only in committed config) → lint → typecheck → `cloudflare-env.d.ts` freshness → `test` → `build:worker` (Next.js + OpenNext) → bundle scan (no secrets in client assets) |
+| `npm run test:e2e` | Playwright on a throwaway local D1; run before production deploys |
+| `npm run db:migrate:staging` / `db:migrate:remote` | Apply D1 migrations (always before the code that needs them) |
+| `npm run deploy:staging` / `deploy` | Render `wrangler.deploy.jsonc` → OpenNext build → deploy → smoke test `GET /api/health` returns the commit SHA |
+
 - **Migrations run before the deploy**, so only **additive** migrations are allowed once production has data.
-- Alternative: Cloudflare **Workers Builds** (`setup-and-deploy.md` §14; free 3,000 build minutes/month). GitHub Actions is preferred so migrations, tests and the deploy run in one pipeline.
+- Deploying from a headless machine: `CLOUDFLARE_API_TOKEN` (Workers Scripts: Edit, D1: Edit, this account only) and `CLOUDFLARE_ACCOUNT_ID` in the shell environment, never in a file.
 - Rollback: `wrangler rollback`; data: D1 Time Travel (7 days).
 
 ---
@@ -777,8 +783,8 @@ A session is active while `ended_at IS NULL AND now < expected_end_at`. Expired-
 **There are never surprise charges.** The cost of a limit is downtime, so:
 
 - **Weekly (daily during a pilot):** check the Cloudflare dashboard → Workers & Pages → `cleared` → Metrics (requests, CPU, errors), and D1 → Metrics.
-- **Optional $0 alarm (Phase 7):** a scheduled GitHub Actions workflow reads Cloudflare's GraphQL Analytics API with a read-only token and opens an issue above 60% of any daily limit.
-- **Backups:** D1 Time Travel (7 days) plus a weekly `wrangler d1 export` during a pilot, stored privately.
+- **Optional $0 alarm (Phase 7, open decision):** a scheduled job that reads Cloudflare's GraphQL Analytics API with a read-only token and warns above 60% of any daily limit. The original plan ran it as a scheduled GitHub Actions workflow; GitHub Actions is otherwise not used (no CI/CD), so Phase 7 decides whether to opt in for this one job (and documents its free-tier limits in §3) or drop it.
+- **Backups:** D1 Time Travel (7 days) plus a weekly `npm run remote -- d1 export … --output=<outside the repo>` during a pilot, stored privately (personal data; the repository is public).
 
 ---
 
@@ -808,16 +814,22 @@ Things that are known to matter for Next.js 16 + OpenNext + D1 + Better Auth on 
 | Quirk | What to do |
 |---|---|
 | OpenNext/workerd can hang when serving Next 16 **Cache Components** output | Enable `cacheComponents` only when `NODE_ENV === "development"` in `next.config.ts`. Session reads must still sit inside `<Suspense>` (the dev build enforces it) |
-| `@opennextjs/aws` expects a CommonJS default export from `cookie` when building the Worker middleware | Add an npm `overrides` entry pinning `cookie` for `@opennextjs/aws` (check the OpenNext issue tracker for whether it's still needed) |
+| `@opennextjs/aws` expects a CommonJS default export from `cookie` when building the Worker middleware | **Not needed as of `@opennextjs/cloudflare` 1.20.18** (Phase 0 built and ran the proxy without it). If a later upgrade breaks the middleware build, add an npm `overrides` entry pinning `cookie` for `@opennextjs/aws` |
+| Next 16 `proxy.ts` always runs on the Node.js runtime; OpenNext warns that Node.js middleware on Cloudflare is "experimental" | Works in `npm run preview` (real `workerd`). Keep `proxy.ts` to a cookie-presence redirect, and re-check redirects on staging after every OpenNext upgrade |
+| `@cloudflare/vitest-pool-workers` was renamed `@cloudflare/vitest-plugin` (Vitest 4 API: `cloudflareTest()` plugin instead of `defineWorkersConfig`) | `vitest.config.mts` uses `cloudflareTest({ wrangler, main })` with a stub `main`, since `.open-next/worker.js` only exists after a build |
+| `wrangler.jsonc` vars are the **production** values, and `next dev` reads them | `.dev.vars` overrides `ENVIRONMENT`, `PUBLIC_BASE_URL` and `BETTER_AUTH_URL` locally; the E2E harness overrides them through `process.env`, which `src/lib/env.ts` honours only in `next dev` |
 | Builds | Use `next build --webpack` for OpenNext compatibility |
-| `.env*` values can be **embedded into the bundle** by OpenNext | Secrets only in `.dev.vars` (local) and Worker secrets; git-ignore `.env*`; CI blocks committed `.env` files |
+| `.env*` values can be **embedded into the bundle** by OpenNext | Secrets only in `.dev.vars` (local) and Worker secrets; git-ignore `.env*`; `npm run check` blocks committed `.env` files |
 | Bindings in `next dev` | `initOpenNextCloudflareForDev()` in `next.config.ts` gives the dev server local D1 and vars (persisted under `.wrangler/state`) |
 | E2E next to a running dev server | Give the E2E server its own `distDir` (`NEXT_DIST_DIR=.next-e2e`) and its own D1 state directory |
 | Better Auth rate-limits sign-ups outside development | Raise the limits in E2E only (`ENVIRONMENT=test`) |
 | The Next.js dev indicator covers bottom-left buttons at phone widths | Turn `devIndicators` off when `E2E=1` |
 | Better Auth's default password hashing vs the 10 ms CPU limit | Works on Workers Free in practice for comparable apps; verified by spike S1 (§6.4) |
 | Drizzle drops table names in single-table `sql` templates | Use fully qualified raw names in correlated subqueries (§12.1) |
-| First deploy needs the required secrets | `opennextjs-cloudflare deploy --secrets-file <tmp file>` (`scripts/deploy-first.sh`, `setup-and-deploy.md` §10.2) |
+| First deploy needs the required secrets | `opennextjs-cloudflare deploy --secrets-file <tmp file>` (`npm run deploy:first[:staging]` → `scripts/deploy.sh --first`, `setup-and-deploy.md` §10.2) |
+| npm appends `-- args` to the **end** of a script's `&&` chain | Deploy scripts are one shell script that takes the environment from the script name and rejects extra arguments (`npm run deploy -- --env staging` would otherwise deploy production) |
+| Under `next dev` (Cache Components), dynamic reads outside `<Suspense>` error; a streamed page can't change its HTTP status, and `export const instant` is rejected by production builds without Cache Components | Gate dev/staging-only *pages* inside the Suspense boundary (they render the not-found page with status 200); gate *route handlers* normally (real 404) |
+| Windows Git Bash checks files out with CRLF, which breaks `set -euo pipefail` | `.gitattributes`: `* text=auto eol=lf`; scripts spawn tools with `process.execPath` instead of `npx` |
 
 ---
 
@@ -828,7 +840,7 @@ Things that are known to matter for Next.js 16 + OpenNext + D1 + Better Auth on 
 | Account | Used for | Notes |
 |---|---|---|
 | Cloudflare | Workers, D1, logs | Daily quotas are shared by every Worker on an account; use a dedicated free account if you run other Workers |
-| GitHub | Repo, Actions | Only needed for automatic deploys |
+| GitHub | Repo (optional) | Hosting the code; no Actions or other paid-tier features used |
 | Brevo | Verification and reset emails | Verify a sender address |
 | Project mailbox (recommended) | Brevo sender; owner of the project accounts | Keeps personal accounts separate |
 
@@ -841,10 +853,11 @@ Step-by-step: [`setup-and-deploy.md`](./setup-and-deploy.md).
 | `BETTER_AUTH_SECRET` | secret (`openssl rand -base64 32`) | Worker secret per environment (different values); `.dev.vars` locally |
 | `BREVO_API_KEY` | secret | Worker secret (staging, production) |
 | `EMAIL_FROM_ADDRESS` | secret | Worker secret |
-| `PUBLIC_BASE_URL`, `BETTER_AUTH_URL` | var | `wrangler.jsonc` per environment |
+| `PUBLIC_BASE_URL`, `BETTER_AUTH_URL` | var | `wrangler.jsonc` per environment, with `<your-subdomain>` filled in from `cleared.config.json` at deploy time |
+| Workers subdomain, D1 database IDs | deployment config (not secret, but personal) | Git-ignored `cleared.config.json` (or `WORKERS_SUBDOMAIN`, `D1_PRODUCTION_ID`, `D1_STAGING_ID` environment variables) |
 | `ENVIRONMENT`, `REQUIRE_EMAIL_VERIFICATION`, `EMAIL_FROM_NAME`, `EMAIL_DAILY_CAP` | var | `wrangler.jsonc` |
 | `ENABLE_DEV_OUTBOX` | var | `.dev.vars` / E2E only, **never** in `wrangler.jsonc` |
-| `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | GitHub Actions secrets | CI |
+| `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | shell environment | Only for deploys from a machine without a browser (`wrangler login` otherwise); never in a file |
 
 **OpenNext can embed values from `.env.local` into the bundle.** Keep secrets in `.dev.vars` and Worker secrets only, never in `.env*`.
 
@@ -900,7 +913,5 @@ Step-by-step: [`setup-and-deploy.md`](./setup-and-deploy.md).
 - [Brevo: limits of the Free plan](https://help.brevo.com/hc/en-us/articles/208580669-FAQs-What-are-the-limits-of-the-Free-plan) and [API rate limits](https://www.brevo.com/blog/api-rate-limiting/)
 - [Brevo: domain authentication and free-mail sender rewriting](https://help.brevo.com/hc/en-us/articles/12163873383186-Authenticate-your-domain-with-Brevo-Brevo-code-DKIM-DMARC)
 
-**GitHub**
-- [GitHub Actions free tier (2026)](https://cicdcalculator.com/github-actions-free-tier) and [billing explained](https://trimci.com/learn/github-actions-billing-explained/); official: docs.github.com → Billing → product usage included, and Actions → limits
 
 > Free tiers change. **Before Phase 0 and before any pilot, re-open these links and update §3 and §13** if anything changed.

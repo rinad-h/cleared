@@ -16,14 +16,14 @@
 4. [Get the code and install](#4-get-the-code-and-install)
 5. [Connect Wrangler to your Cloudflare account](#5-connect-wrangler-to-your-cloudflare-account)
 6. [Create the D1 databases](#6-create-the-d1-databases)
-7. [Configure `wrangler.jsonc`](#7-configure-wranglerjsonc)
+7. [Add your deployment values (`cleared.config.json`)](#7-add-your-deployment-values-clearedconfigjson)
 8. [Run it locally](#8-run-it-locally)
 9. [Set up email (Brevo)](#9-set-up-email-brevo)
 10. [First deploy to staging](#10-first-deploy-to-staging)
 11. [First deploy to production](#11-first-deploy-to-production)
 12. [First-run setup in the app](#12-first-run-setup-in-the-app)
 13. [Everyday deploys](#13-everyday-deploys)
-14. [Automatic deploys with GitHub Actions (optional)](#14-automatic-deploys-with-github-actions-optional)
+14. [Checks before every deploy](#14-checks-before-every-deploy)
 15. [Operating it: logs, usage, backups](#15-operating-it-logs-usage-backups)
 16. [Troubleshooting](#16-troubleshooting)
 17. [Command reference](#17-command-reference)
@@ -55,18 +55,16 @@ Plus a local development setup that uses a local copy of D1 and no Cloudflare qu
 | **A Cloudflare account** | Free. **Don't add a payment method** |
 | **A Brevo account** | Free (300 emails/day). Sends verification and password-reset emails |
 | **An email address for sending** | Any inbox you control, verified in Brevo as the sender. A dedicated project mailbox is better than a personal one |
-| **A GitHub account** | Only for automatic deploys (§14) |
 
 Optional: a phone and a printer to test QR labels.
 
-**Everything above is free.** The limits of every service (requests per day, database reads and writes, emails per day, CI minutes) are listed in [`technologies.md` §3.2](./technologies.md#32-free-limits-for-every-technology). The ones you're most likely to notice:
+**Everything above is free.** The limits of every service (requests per day, database reads and writes, emails per day) are listed in [`technologies.md` §3.2](./technologies.md#32-free-limits-for-every-technology). The ones you're most likely to notice:
 
 | Service | Free limit | Resets |
 |---|---|---|
 | Cloudflare Workers | 100,000 requests/day per account; 10 ms CPU per request | 00:00 UTC |
 | Cloudflare D1 | 5M rows read/day, 100k rows written/day, 500 MB per database | 00:00 UTC |
 | Brevo | 300 emails/day (Cleared stops at 280) | Daily |
-| GitHub Actions | Unlimited for public repos; 2,000 min/month for private | Monthly |
 
 ---
 
@@ -85,8 +83,8 @@ Optional: a phone and a printer to test QR labels.
 ## 4. Get the code and install
 
 ```bash
-# Fork the repository on GitHub first if you want automatic deploys (§14), then:
-git clone https://github.com/<your-github-user>/cleared.git
+# Clone (or fork, then clone your fork):
+git clone https://github.com/<github-user>/cleared.git
 cd cleared
 npm ci
 ```
@@ -108,7 +106,7 @@ If you have access to several Cloudflare accounts, `whoami` lists them. Put the 
 export CLOUDFLARE_ACCOUNT_ID=<account-id-from-whoami>
 ```
 
-**No browser available** (SSH, CI)? Create an API token instead (§14, step 1) and run `export CLOUDFLARE_API_TOKEN=<token>` before running Wrangler.
+**No browser available** (SSH, a server)? Create an API token instead (§14) and run `export CLOUDFLARE_API_TOKEN=<token>` before running Wrangler.
 
 ---
 
@@ -131,7 +129,7 @@ Each command prints a block like this:
 }
 ```
 
-Copy each **`database_id`** into `wrangler.jsonc` (next section). If Wrangler asks whether to update your config automatically, answer **no**: the staging ID belongs under `env.staging`, which the automatic edit doesn't handle.
+Copy each **`database_id`** into `cleared.config.json` (next section). If Wrangler asks whether to update your config automatically, answer **no**: the committed `wrangler.jsonc` must keep its placeholders.
 
 Check they exist:
 
@@ -143,64 +141,51 @@ npx wrangler d1 list
 
 ---
 
-## 7. Configure `wrangler.jsonc`
+## 7. Add your deployment values (`cleared.config.json`)
 
-Open `wrangler.jsonc` and replace every placeholder. These are the only edits a new deployment needs:
+The repository stays **generic**: the committed `wrangler.jsonc` keeps placeholders (`<your-subdomain>`, `<prod-database-id>`, `<staging-database-id>`) and `npm run check` fails if real values ever land in it. Your own values go in a **git-ignored** file instead:
 
-| Placeholder | Replace with |
-|---|---|
-| `<your-subdomain>` (4 places: `PUBLIC_BASE_URL` and `BETTER_AUTH_URL`, in production and in `env.staging`) | Your `workers.dev` subdomain from §3 |
-| `<prod-database-id>` | The `cleared-prod` ID from §6 |
-| `<staging-database-id>` | The `cleared-staging` ID from §6 |
-| `compatibility_date` | Leave as committed. Only change it deliberately, and test after |
+```bash
+cp cleared.config.example.json cleared.config.json
+```
 
-The relevant parts:
-
-```jsonc
+```json
 {
-  "name": "cleared",
-  "main": ".open-next/worker.js",
-  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
-  "workers_dev": true,
-  "vars": {
-    "ENVIRONMENT": "production",
-    "PUBLIC_BASE_URL": "https://cleared.<your-subdomain>.workers.dev",
-    "BETTER_AUTH_URL": "https://cleared.<your-subdomain>.workers.dev",
-    "REQUIRE_EMAIL_VERIFICATION": "true",
-    "EMAIL_FROM_NAME": "Cleared",
-    "EMAIL_DAILY_CAP": "280"
-  },
-  "services": [{ "binding": "WORKER_SELF_REFERENCE", "service": "cleared" }],
-  "d1_databases": [
-    { "binding": "DB", "database_name": "cleared-prod", "database_id": "<prod-database-id>", "migrations_dir": "drizzle" }
-  ],
-  "env": {
-    "staging": {
-      "name": "cleared-staging",
-      "vars": {
-        "ENVIRONMENT": "staging",
-        "PUBLIC_BASE_URL": "https://cleared-staging.<your-subdomain>.workers.dev",
-        "BETTER_AUTH_URL": "https://cleared-staging.<your-subdomain>.workers.dev"
-        // … other vars as committed
-      },
-      "services": [{ "binding": "WORKER_SELF_REFERENCE", "service": "cleared-staging" }],
-      "d1_databases": [
-        { "binding": "DB", "database_name": "cleared-staging", "database_id": "<staging-database-id>", "migrations_dir": "drizzle" }
-      ]
-    }
+  "workersSubdomain": "my-makerspace",
+  "d1": {
+    "production": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+    "staging": "yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy"
   }
 }
 ```
 
-**Renaming the Worker** (for example `makerspace-pass` instead of `cleared`)? Change `name`, the `WORKER_SELF_REFERENCE` `service`, and both URLs to match. The URL is always `https://<name>.<your-subdomain>.workers.dev`.
+| Field | Value |
+|---|---|
+| `workersSubdomain` | Your `workers.dev` subdomain from §3: just the label (`my-makerspace`), no `https://`, no dots |
+| `d1.production` | The `cleared-prod` ID from §6 |
+| `d1.staging` | The `cleared-staging` ID from §6 |
 
-After editing, regenerate the binding types:
+These aren't secrets, but they're yours, so they never go in the repository. Keep a copy in your password manager.
+
+**How it's used:** every command that talks to your Cloudflare deployment first runs `scripts/render-wrangler.mjs`, which fills the placeholders and writes **`wrangler.deploy.jsonc`** (also git-ignored), then runs Wrangler with `--config wrangler.deploy.jsonc`. The npm scripts do this for you:
+
+| Use | Instead of |
+|---|---|
+| `npm run deploy`, `npm run deploy:staging`, `npm run deploy:first`, `npm run deploy:first:staging` | `opennextjs-cloudflare deploy …` |
+| `npm run db:migrate:remote`, `npm run db:migrate:staging` | `npx wrangler d1 migrations apply DB --remote …` |
+| `npm run remote -- <wrangler arguments>` | `npx wrangler <arguments>` for anything that touches a **remote D1 database** (`d1 execute`, `d1 export`, `d1 time-travel`, `d1 migrations list`) |
+
+Plain `npx wrangler` against the committed `wrangler.jsonc` sees placeholder database IDs, so remote D1 commands fail with it. Commands that only need your login and the Worker name (`wrangler tail`, `wrangler secret …`, `wrangler rollback`, `wrangler deployments list`) work either way. Local development and tests never need `cleared.config.json`.
+
+Check the rendered config and your URLs:
 
 ```bash
-npm run cf-typegen
+npm run config:render                                # writes wrangler.deploy.jsonc, or says what's missing
+node scripts/render-wrangler.mjs --url staging       # https://cleared-staging.<your-subdomain>.workers.dev
+node scripts/render-wrangler.mjs --url production    # https://cleared.<your-subdomain>.workers.dev
 ```
 
-> `wrangler.jsonc` has no secrets in it, so committing your IDs and URLs is fine.
+**Renaming the Worker** (for example `makerspace-pass` instead of `cleared`)? That's a change to the template itself: edit `name`, the `WORKER_SELF_REFERENCE` `service`, and both URLs in `wrangler.jsonc` (keeping `<your-subdomain>`), then run `npm run cf-typegen`. The URL is always `https://<name>.<your-subdomain>.workers.dev`. Leave `compatibility_date` as committed unless you change it deliberately and test.
 
 ---
 
@@ -210,11 +195,13 @@ npm run cf-typegen
 cp .dev.vars.example .dev.vars
 ```
 
-Edit `.dev.vars` (git-ignored, never committed):
+Edit `.dev.vars` (git-ignored, never committed). The example already overrides the production values from `wrangler.jsonc` for local work; the one thing you must set is the secret:
 
 ```bash
-BETTER_AUTH_SECRET=<output of: openssl rand -base64 32>
+ENVIRONMENT=development
+PUBLIC_BASE_URL=http://localhost:3000
 BETTER_AUTH_URL=http://localhost:3000
+BETTER_AUTH_SECRET=<output of: openssl rand -base64 32>
 ENABLE_DEV_OUTBOX=1        # local only: shows verification/reset links instead of emailing them
 ```
 
@@ -226,15 +213,17 @@ npm run db:seed            # optional: clearly fake demo data ("Demo Makerspace"
 npm run dev                # http://localhost:3000
 ```
 
+- **The dev server only listens on this computer** (`127.0.0.1`), so the dev-only pages (spikes, and the email outbox from Phase 1) aren't reachable from the café or campus Wi-Fi. `http://localhost:3000` works as usual.
 - **Emails in development aren't sent.** The verification or reset link is printed in the terminal and available at `http://localhost:3000/api/dev/outbox?email=<address>`.
 - The first account you create and verify can complete **Setup** and becomes admin.
-- **Test the real Workers runtime** before deploying: `npm run preview` builds with OpenNext and serves on `http://localhost:8787`. Set `BETTER_AUTH_URL=http://localhost:8787` in `.dev.vars` while previewing.
+- **Test the real Workers runtime** before deploying: `npm run preview` builds with OpenNext and serves on `http://localhost:8787` (if that port is taken: `npm run preview -- --port 8799`). Set `PUBLIC_BASE_URL` and `BETTER_AUTH_URL` to the preview URL in `.dev.vars` while previewing.
 - **Don't put secrets in `.env`, `.env.local` or similar.** OpenNext can embed `.env*` values into the deployed bundle. Use `.dev.vars` locally and Worker secrets in Cloudflare.
 
 Run the checks:
 
 ```bash
 npm run lint && npm run typecheck && npm test
+npx playwright install chromium   # once: the browser used by the E2E tests
 npm run test:e2e           # browser tests against a throwaway local database
 ```
 
@@ -262,48 +251,49 @@ You'll store the key as a Worker secret in the next steps, never in a file in th
 ### 10.1 Apply the database migrations
 
 ```bash
-npx wrangler d1 migrations apply DB --remote --env staging
+npm run db:migrate:staging
 ```
 
 Wrangler lists the migrations it's about to apply and asks for confirmation. Check with:
 
 ```bash
-npx wrangler d1 migrations list DB --remote --env staging
+npm run remote -- d1 migrations list DB --remote --env staging
 ```
 
 ### 10.2 Deploy with secrets
 
-`wrangler.jsonc` lists the secrets the Worker requires (`BETTER_AUTH_SECRET`, `BREVO_API_KEY`, `EMAIL_FROM_ADDRESS`). For the **first** deploy, upload them together with the code using a temporary secrets file. The `deploy:first` script does it for you:
+`wrangler.jsonc` lists the secrets the Worker requires (`BETTER_AUTH_SECRET`, `BREVO_API_KEY`, `EMAIL_FROM_ADDRESS`). For the **first** deploy, upload them together with the code:
 
 ```bash
-BREVO_API_KEY=xkeysib-... EMAIL_FROM_ADDRESS=you@example.org npm run deploy:first -- --env staging
+npm run deploy:first:staging
+# Brevo API key (input hidden): ****
+# Sender address verified in Brevo: you@example.org
 ```
 
-`scripts/deploy-first.sh`:
-1. generates a fresh `BETTER_AUTH_SECRET` (`openssl rand -base64 32`),
-2. writes the three secrets to a temporary file (deleted on exit),
-3. runs `opennextjs-cloudflare build` then `opennextjs-cloudflare deploy --env staging --secrets-file <tmp>`.
+`scripts/deploy.sh staging --first`:
+1. renders `wrangler.deploy.jsonc` from your `cleared.config.json` (§7);
+2. **refuses to continue if staging already has its secrets** (a second "first deploy" would replace `BETTER_AUTH_SECRET` and sign everyone out);
+3. asks for the Brevo key with a hidden prompt, so it never lands in your shell history (it uses `BREVO_API_KEY` / `EMAIL_FROM_ADDRESS` instead if they're already set in your environment);
+4. generates a fresh `BETTER_AUTH_SECRET` (`openssl rand -base64 32`);
+5. builds (without the secrets in the build's environment), then scans the build for secret values (`scripts/check-bundle.mjs`);
+6. writes the three secrets to a private temporary file (mode 600, deleted on exit, even on failure or Ctrl-C) and runs `opennextjs-cloudflare deploy --config wrangler.deploy.jsonc --env staging --secrets-file <tmp>`;
+7. runs the smoke test (§10.3).
 
-Doing it by hand instead:
+The environment comes only from the script name: `npm run deploy:first:staging` or `npm run deploy:first` (production). Extra arguments such as `-- --env staging` are rejected rather than guessed.
 
-```bash
-npm run build:worker                                   # opennextjs-cloudflare build
-printf 'BETTER_AUTH_SECRET=%s\nBREVO_API_KEY=%s\nEMAIL_FROM_ADDRESS=%s\n' \
-  "$(openssl rand -base64 32)" "xkeysib-..." "you@example.org" > /tmp/cleared-secrets.env
-npx opennextjs-cloudflare deploy --env staging --secrets-file /tmp/cleared-secrets.env
-rm /tmp/cleared-secrets.env
-```
-
-> **Use a different `BETTER_AUTH_SECRET` for staging and production,** and keep each one stable. Changing it later signs everyone out.
+> **Use a different `BETTER_AUTH_SECRET` for staging and production,** and keep each one stable. Changing it later signs everyone out. To change one secret on purpose: `npm run remote -- secret put BREVO_API_KEY [--env staging]` (it prompts for the value).
 
 ### 10.3 Check it
 
+The deploy script already ran `scripts/smoke-test.sh staging`: `/api/health` must report `ok`, `environment: "staging"` and the version this checkout builds (the commit SHA, plus `-dirty-<hash>` if you deployed uncommitted changes), `/help` must render and `/` must redirect (307) to `/machines`. By hand:
+
 ```bash
+bash scripts/smoke-test.sh staging
 curl https://cleared-staging.<your-subdomain>.workers.dev/api/health
 # {"status":"ok","version":"<git sha>","environment":"staging"}
 
-npx wrangler secret list --env staging       # shows the three secret names (not values)
-npx wrangler tail cleared-staging            # live logs; open the site in a browser to see requests
+npm run remote -- secret list --env staging   # shows the three secret names (not values)
+npx wrangler tail cleared-staging             # live logs; open the site in a browser to see requests
 ```
 
 Open the staging URL on your phone, sign up, verify from the email, and sign in.
@@ -312,12 +302,11 @@ Open the staging URL on your phone, sign up, verify from the email, and sign in.
 
 ## 11. First deploy to production
 
-The same steps, without `--env staging`:
+The same steps for production:
 
 ```bash
-npx wrangler d1 migrations apply DB --remote
-BREVO_API_KEY=xkeysib-... EMAIL_FROM_ADDRESS=you@example.org npm run deploy:first
-curl https://cleared.<your-subdomain>.workers.dev/api/health
+npm run db:migrate:remote
+npm run deploy:first          # prompts for the Brevo key and sender, then deploys and smoke-tests
 ```
 
 ---
@@ -339,19 +328,19 @@ If the wrong person completes setup on a fresh deployment, fix it with the admin
 After code changes:
 
 ```bash
-npm run lint && npm run typecheck && npm test     # local checks
+npm run check                                     # must pass before any deploy (§14)
 # if the change added a migration (new file in drizzle/):
-npx wrangler d1 migrations apply DB --remote --env staging
-npm run deploy:staging                            # opennextjs-cloudflare build && deploy --env staging
-# try it on staging, then:
-npx wrangler d1 migrations apply DB --remote
-npm run deploy                                    # production
+npm run db:migrate:staging
+npm run deploy:staging                            # build, deploy to staging, smoke test
+# try it on staging (npm run test:e2e locally too), then:
+npm run db:migrate:remote
+npm run deploy                                    # build, deploy to production, smoke test
 ```
 
 Rules:
 
 - **Apply migrations before deploying the code that needs them.** Migrations must be **additive** (new tables, new nullable or defaulted columns, new indexes), so the old code keeps working against the new schema.
-- **Secrets persist across deploys.** You only set them again to change them: `npx wrangler secret put BREVO_API_KEY [--env staging]`.
+- **Secrets persist across deploys.** You only set them again to change them: `npm run remote -- secret put BREVO_API_KEY [--env staging]`.
 - **Roll back** a bad code deploy: `npx wrangler rollback [--env staging]` (Workers keeps 30 days of versions). Never roll back a migration; write a new one.
 
 ### Making a schema change
@@ -367,40 +356,29 @@ Then the staging/production steps above.
 
 ---
 
-## 14. Automatic deploys with GitHub Actions (optional)
+## 14. Checks before every deploy
 
-The repository includes `.github/workflows/ci.yml` (checks on every PR) and `.github/workflows/deploy.yml` (staging on every push to `main`, production after manual approval).
-
-1. **Create a Cloudflare API token:** dashboard → **My Profile → API Tokens → Create Token → Create Custom Token**:
-   - Permissions: **Account · Workers Scripts · Edit** and **Account · D1 · Edit**
-   - Account resources: **Include · <your account>**
-   - Create it and copy the token.
-2. **Add GitHub secrets:** repository → **Settings → Secrets and variables → Actions → New repository secret**:
-   - `CLOUDFLARE_API_TOKEN`: the token
-   - `CLOUDFLARE_ACCOUNT_ID`: from `npx wrangler whoami`
-
-   And on the **Variables** tab (used by the smoke test after each deploy):
-   - `STAGING_URL`: `https://cleared-staging.<your-subdomain>.workers.dev`
-   - `PRODUCTION_URL`: `https://cleared.<your-subdomain>.workers.dev`
-3. **Protect production:** **Settings → Environments → New environment** `production` → **Required reviewers**: add yourself. The production job waits for your approval.
-4. **Do the first deploys by hand** (§10–11) so the Worker secrets exist. The workflow deploys code and applies migrations; it doesn't create secrets.
-5. Push to `main`. Watch **Actions**: the staging job applies migrations, deploys and calls `/api/health`. Approve the production job when ready.
-
-What `deploy.yml` runs (for reference):
+There's no CI server: deploys happen from your machine, so run the checks there first.
 
 ```bash
-npm ci
-npx wrangler d1 migrations apply DB --remote --env staging
-npm run deploy:staging
-curl -fsS "$STAGING_URL/api/health"
-# production job (after approval):
-npx wrangler d1 migrations apply DB --remote
-npm run deploy
+npm run check          # what must pass before any deploy
+npm run test:e2e       # browser tests on a throwaway local database (recommended before production)
 ```
 
-> Public repositories get unlimited GitHub Actions minutes; private ones get 2,000 minutes/month on the free plan, which is plenty.
+`npm run check` runs, in order:
 
-**Alternative:** Cloudflare **Workers Builds** (dashboard → your Worker → **Settings → Builds → Connect** → pick the repo, deploy command `npm run deploy`). Free, 3,000 build minutes/month. It doesn't apply D1 migrations for you, so apply them by hand before pushing a change that needs them.
+| Step | Fails when |
+|---|---|
+| Repo guards (`scripts/check-bundle.mjs --repo`) | A `.env*` or `.dev.vars` file is tracked by git; `ENABLE_DEV_OUTBOX` appears in `wrangler.jsonc`; `wrangler.jsonc` or `cleared.config.example.json` holds real values instead of placeholders; `cleared.config.json` or `wrangler.deploy.jsonc` is tracked |
+| `npm run lint`, `npm run typecheck` | ESLint warnings or errors; TypeScript errors |
+| Binding types (`scripts/cf-typegen.mjs --check`) | `cloudflare-env.d.ts` is stale: run `npm run cf-typegen` |
+| `npm test` | A unit or service test fails |
+| `npm run build:worker` | The Next.js or OpenNext build fails |
+| Bundle scan (`scripts/check-bundle.mjs`) | Something that looks like a secret (Brevo key, auth secret, private key, token) is in the files sent to browsers |
+
+Each deploy script then runs the **smoke test** by itself: `/api/health` on the environment you just deployed must answer `ok` with your current commit SHA (`scripts/smoke-test.sh`). If it fails, roll back (`npx wrangler rollback [--env staging]`) and look at `npx wrangler tail`.
+
+> **Deploying from a machine with no browser** (SSH, a server)? Create an API token instead of `wrangler login`: dashboard → **My Profile → API Tokens → Create Token → Create Custom Token** with **Account · Workers Scripts · Edit** and **Account · D1 · Edit**, limited to your account. Then `export CLOUDFLARE_API_TOKEN=<token>` and `export CLOUDFLARE_ACCOUNT_ID=<id>`. Never save the token in the repository.
 
 ---
 
@@ -412,9 +390,9 @@ npm run deploy
 | **Stored logs** | Dashboard → Workers & Pages → `cleared` → **Logs** (3 days on the free plan) |
 | **Request and CPU usage** | Dashboard → `cleared` → **Metrics**. Watch daily requests (free limit 100,000) and errors such as **1102** (CPU limit) |
 | **Database usage** | Dashboard → **Storage & Databases → D1** → `cleared-prod` → **Metrics** (rows read: 5M/day; rows written: 100k/day) |
-| **Query the database** | `npx wrangler d1 execute cleared-prod --remote --command "SELECT COUNT(*) FROM members"`. Remote queries count toward your daily quota; keep them small |
-| **Backup** | `npx wrangler d1 export cleared-prod --remote --output=backup-$(date +%F).sql`. Store it privately: it contains personal data |
-| **Restore to a point in time** (last 7 days) | `npx wrangler d1 time-travel info cleared-prod` then `npx wrangler d1 time-travel restore cleared-prod --timestamp=<ISO time>`. Rehearse on staging first |
+| **Query the database** | `npm run remote -- d1 execute cleared-prod --remote --command "SELECT COUNT(*) FROM members"`. Remote queries count toward your daily quota; keep them small |
+| **Backup** | `mkdir -p ~/cleared-backups && npm run remote -- d1 export cleared-prod --remote --output="$HOME/cleared-backups/cleared-$(date +%F).sql"`. **Always outside the repository**: a dump contains personal data, and the repository is public. `npm run check` fails if a `.sql` file outside `drizzle/` could be committed |
+| **Restore to a point in time** (last 7 days) | `npm run remote -- d1 time-travel info cleared-prod` then `npm run remote -- d1 time-travel restore cleared-prod --timestamp=<ISO time>`. Rehearse on staging first: `npm run remote -- d1 time-travel info cleared-staging --env staging` |
 | **Change a secret** | `npx wrangler secret put <NAME> [--env staging]` |
 
 Daily free limits reset at **00:00 UTC**. If you hit one, the app shows a "back after the daily reset" message until then. Nothing is billed.
@@ -426,9 +404,14 @@ Daily free limits reset at **00:00 UTC**. If you hit one, the app shows a "back 
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | `wrangler` commands act on the wrong account | Several accounts on your login | `export CLOUDFLARE_ACCOUNT_ID=…` (§5) |
-| Deploy fails: missing required secret | First deploy without secrets | Use `npm run deploy:first` (§10.2) or `npx wrangler secret put …` |
-| `no such table` errors after deploy | Migrations not applied to that database | `npx wrangler d1 migrations apply DB --remote [--env staging]` |
-| Sign-in works locally but not when deployed; cookies missing | `BETTER_AUTH_URL` doesn't exactly match the deployed URL | Fix both URLs in `wrangler.jsonc` (`https://`, no trailing slash) and redeploy |
+| Deploy fails: missing required secret | First deploy without secrets | Use `npm run deploy:first[:staging]` (§10.2) or `npm run remote -- secret put <NAME> [--env staging]` |
+| `deploy: … already has its secrets` | `deploy:first` on an environment that's already set up | Use `npm run deploy[:staging]`; secrets persist across deploys |
+| `deploy: unexpected argument` | e.g. `npm run deploy -- --env staging` | The environment comes from the script name: `npm run deploy:staging` |
+| Smoke test fails on `version` right after a deploy | The deploy didn't happen, or the tree changed during it | Check the deploy output; rerun `bash scripts/smoke-test.sh staging` |
+| `no such table` errors after deploy | Migrations not applied to that database | `npm run db:migrate:staging` / `npm run db:migrate:remote` |
+| `render-wrangler: missing deployment values` | No `cleared.config.json` | §7 |
+| A remote `d1` command fails with an invalid database ID | Plain `npx wrangler` reads the committed placeholders | Use `npm run remote -- d1 …` (§7) |
+| Sign-in works locally but not when deployed; cookies missing | `BETTER_AUTH_URL` doesn't exactly match the deployed URL | Check `workersSubdomain` in `cleared.config.json` and `node scripts/render-wrangler.mjs --url production`, then redeploy |
 | Verification emails don't arrive | Brevo sender not verified, account not yet approved, wrong API key, or spam folder | Check the Brevo dashboard (**Transactional → Logs**); `npx wrangler secret list` |
 | "Email is busy today" | Daily email cap reached | Wait for 00:00 UTC; for urgent cases use the admin set-password script below |
 | **Error 1102** in logs | A request used more CPU than the free plan allows | See which route in **Logs**; `technologies.md` §5.2 and §6.4 |
@@ -447,22 +430,25 @@ Daily free limits reset at **00:00 UTC**. If you hit one, the app shows a "back 
 | `npm ci` | Install exact dependencies |
 | `npm run dev` | Next.js dev server with local D1 (`localhost:3000`) |
 | `npm run preview` | OpenNext build served in the Workers runtime (`localhost:8787`) |
-| `npm run lint` / `npm run typecheck` / `npm test` | Checks and service tests |
+| `npm run check` | Everything that must pass before a deploy: repo guards, lint, types, binding types, tests, Worker build, bundle scan (§14) |
+| `npm run lint` / `npm run typecheck` / `npm test` | Checks and service tests individually |
 | `npm run test:e2e` | Browser tests on a throwaway local database |
 | `npm run db:generate` | New migration from `src/db/schema.ts` changes |
 | `npm run db:migrate` | Apply migrations to the local D1 |
 | `npm run db:seed` | Load fake demo data locally |
 | `npm run cf-typegen` | Regenerate binding types after editing `wrangler.jsonc` |
-| `npm run deploy:first [-- --env staging]` | First deploy, generating and uploading secrets |
-| `npm run deploy:staging` / `npm run deploy` | Build and deploy to staging / production |
+| `npm run config:render` | Write `wrangler.deploy.jsonc` from `wrangler.jsonc` + `cleared.config.json` |
+| `npm run remote -- <args>` | Run Wrangler against your deployment config (needed for remote D1 commands) |
+| `npm run deploy:first:staging` / `npm run deploy:first` | First deploy of staging / production: prompts for the Brevo key, generates `BETTER_AUTH_SECRET`, uploads secrets with the code, smoke-tests (refuses if the secrets already exist) |
+| `npm run deploy:staging` / `npm run deploy` | Build, deploy to staging / production, then smoke test `/api/health` |
 | `npx wrangler login` / `whoami` | Connect to / check your Cloudflare account |
 | `npx wrangler d1 create <name> --location=wnam` | Create a D1 database |
 | `npx wrangler d1 list` | List databases |
-| `npx wrangler d1 migrations apply DB --remote [--env staging]` | Apply migrations to a remote database |
-| `npx wrangler d1 migrations list DB --remote [--env staging]` | Show applied and pending migrations |
-| `npx wrangler d1 execute <db> --remote --command "<SQL>"` | Run a query (uses quota) |
-| `npx wrangler d1 export <db> --remote --output=<file>` | Backup |
-| `npx wrangler d1 time-travel restore <db> --timestamp=<ISO>` | Point-in-time restore |
+| `npm run db:migrate:staging` / `npm run db:migrate:remote` | Apply migrations to the staging / production database |
+| `npm run remote -- d1 migrations list DB --remote [--env staging]` | Show applied and pending migrations |
+| `npm run remote -- d1 execute <db> --remote --command "<SQL>"` | Run a query (uses quota) |
+| `npm run remote -- d1 export <db> --remote --output=<file outside the repo>` | Backup (contains personal data) |
+| `npm run remote -- d1 time-travel restore <db> --timestamp=<ISO>` | Point-in-time restore |
 | `npx wrangler secret put <NAME> [--env staging]` | Set or change a secret |
 | `npx wrangler secret list [--env staging]` | List secret names |
 | `npx wrangler tail <worker>` | Live logs |

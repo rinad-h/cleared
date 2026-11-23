@@ -238,7 +238,7 @@ Structure:
 
 - **Server Component** page: renders the shell, then a `<Suspense>` boundary around `<PassSection token>` which reads the session (`getActor()`) and calls `getMachineByToken`. Session reads must be inside `<Suspense>`.
 - **Client components** inside it: `<LiveClock offsetMs tz>`, `<MissingCertList>`, and (Phase 4/5) the session and report-a-problem forms that call server actions.
-- **Refresh:** a client `<AutoRefresh seconds={60}>` (Phase 0 component) calls `router.refresh()` every 60 s **while the tab is visible**, plus on window focus and after any action. That's cheaper than polling a JSON endpoint here because the pass is usually open for less than a minute.
+- **Refresh:** a client `<AutoRefresh seconds={60}>` (Phase 0 component) calls `router.refresh()` every 60 s **while the tab is visible**; after the tab was hidden it refreshes as soon as 60 s have passed since the last refresh (right away if they already have). After an action, the action's own `refresh()` re-renders the page, so no extra refresh is needed. That's cheaper than polling a JSON endpoint here because the pass is usually open for less than a minute.
 - **Hot path CPU** (`technologies.md` §5.2): one batched data call, a small component tree, no markdown, charts or heavy animation. Check `cpuTime` on staging (P3-53).
 - Links out of this page (to My certifications, Help) use `prefetch={false}`.
 
@@ -328,7 +328,7 @@ Cards per certification: state chip (Valid / Expiring soon / Expired / Revoked /
 
 ### 7.3 Tests
 
-Service tests in `tests/services/`, Vitest + `@cloudflare/vitest-pool-workers`, calling services directly with actors and an explicit `now`.
+Service tests in `tests/services/`, Vitest + `@cloudflare/vitest-plugin`, calling services directly with actors and an explicit `now`.
 
 **T02 — pass logic** (`tests/services/T02-pass.spec.ts`, plus table-driven unit tests in `tests/unit/pass.spec.ts`)
 

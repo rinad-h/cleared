@@ -89,10 +89,10 @@
 |---|---|---|
 | P7-40 | **Index audit:** run `EXPLAIN QUERY PLAN` (locally) for every hot query: pass by token, board, console, fault queue, member search, grants by member/cert, open `machine_sessions`, service history, checkups, Better Auth session lookup | No `SCAN` of `machine_sessions`, `grants`, `faults`, `service_records` or `session`; scans only on small tables (`rooms`, `machines`, `machine_requirements`, `checkups`) |
 | P7-41 | **Prefetch audit:** in production mode, open the board, My certifications and the console lists with the Network panel; count requests triggered by `<Link>` prefetches | No prefetch requests from member-app links or long lists (`prefetch={false}`); only console nav items prefetch |
-| P7-42 | **Rows-read measurement:** with the dev-mode `meta` logging (Phase 0), record rows read/written per page, action and route handler with demo data at 10 and 60 machines | Update the `technologies.md` §13.1 table with measured values |
+| P7-42 | **Rows-read measurement:** log D1's `meta.rows_read` / `meta.rows_written` in development (a small dev-only addition to `src/server/log.ts` made in this phase; Phase 0 doesn't provide it), and record rows read/written per page, action and route handler with demo data at 10 and 60 machines | Update the `technologies.md` §13.1 table with measured values |
 | P7-43 | **Simulated pilot day** (locally, never against production): a Playwright or small Node script replays a pilot day against `npm run preview` (real `workerd`), with 8 board viewers, 3 consoles, 1,500 page views, 250 actions; sums requests and rows read/written | Projected daily usage < 30% of every free limit |
 | P7-44 | **Daily-limit behaviour:** force the `DAILY_LIMIT` path (a test-only fake D1 error in a service test, plus a manual check of the UI banner with a dev-only toggle) | Pages and polling components show "Cleared is over its free daily limit and will be back after 5 pm" |
-| P7-45 | **Optional $0 usage alarm:** a GitHub Actions **scheduled workflow** (daily, 22:00 UTC) calls Cloudflare's GraphQL Analytics API with a **read-only** token (Account Analytics: Read) for today's Worker requests (all Workers on the account) and D1 rows read/written; opens a GitHub issue if any is > 60% of its limit. It runs in GitHub, not in the app, so it doesn't break the PRD's no-background-jobs rule | Workflow green; tested by temporarily lowering the threshold |
+| P7-45 | **Optional $0 usage alarm (open decision, see D2):** a GitHub Actions **scheduled workflow** (daily, 22:00 UTC) calls Cloudflare's GraphQL Analytics API with a **read-only** token (Account Analytics: Read) for today's Worker requests (all Workers on the account) and D1 rows read/written; opens a GitHub issue if any is > 60% of its limit. It runs in GitHub, not in the app, so it doesn't break the PRD's no-background-jobs rule. The project otherwise uses no GitHub Actions (no CI/CD, decided 2026-11-22): adopting this means documenting Actions' free-tier limits in `technologies.md` §3 and storing the read-only token as a GitHub secret. Otherwise check the dashboard weekly (`technologies.md` §14) | Workflow green; tested by temporarily lowering the threshold |
 | P7-46 | Re-check the **Workers Logs pricing change (Dec 1, 2026)**: confirm logging is still free or adjust `head_sampling_rate` / disable it | Recorded in `technologies.md` §4.5 |
 
 ### 3.6 Security and privacy review (PRD 11.1)
@@ -100,7 +100,7 @@
 | ID | Check |
 |---|---|
 | P7-50 | **No auth bypass:** search the codebase for any header- or env-based way to become a user (`X-Test`, `TEST_AUTH`, hard-coded IDs) → none. The action-wrapper sweep and T10 service sweep (Phase 6) are green |
-| P7-51 | **Dev outbox closed:** `curl -i https://cleared.<your-subdomain>.workers.dev/api/dev/outbox?email=x` → **404** on production and staging; the CI bundle check confirms the outbox code is behind the `NODE_ENV === "development"` + `ENABLE_DEV_OUTBOX` guard; `ENABLE_DEV_OUTBOX` isn't in `wrangler.jsonc` |
+| P7-51 | **Dev outbox closed:** `curl -i https://cleared.<your-subdomain>.workers.dev/api/dev/outbox?email=x` → **404** on production and staging; `npm run check` (and every deploy) confirms the outbox code is behind the `NODE_ENV === "development"` + `ENABLE_DEV_OUTBOX` guard; `ENABLE_DEV_OUTBOX` isn't in `wrangler.jsonc` |
 | P7-52 | **CSRF:** server actions rely on Next.js's built-in origin check (`serverActions.allowedOrigins` unset); every route handler other than Better Auth's exports **GET only** (a unit test lists `src/app/api/**/route.ts` exports); cookies `HttpOnly`, `Secure`, `SameSite=Lax`. Test: a cross-origin POST to a server action is rejected |
 | P7-53 | **Passwords:** min 8 / max 128 enforced; sign-in errors are generic ("Email or password is incorrect"; no "no such user"); password reset tokens expire in 1 hour and sessions are revoked on reset; Better Auth's limiter blocks a 6th sign-in attempt within a minute (manual check on staging) |
 | P7-54 | **Optional breached-password check:** evaluate Better Auth's `haveIBeenPwned` plugin (free; sends only a 5-character hash prefix). It adds an outbound request and some CPU to sign-up/reset; adopt it only if P7-33 shows headroom. Record the decision |
@@ -110,9 +110,9 @@
 | P7-58 | **Dependencies:** `npm audit --omit=dev`; update or replace anything high/critical; pin exact versions (Next, OpenNext, Better Auth, Drizzle, Wrangler) |
 | P7-59 | **Privacy of responses:** re-run the T06 privacy assertions against **production** `/api/status-board` responses with demo data; check the pass never shows other members' names, and that page HTML/RSC payloads for members don't include other members' data (inspect the RSC payload of `/machines`) |
 | P7-60 | **Logs:** search 3 days of Workers Logs for `@`, `password`, `token=` and free-text fields → none |
-| P7-61 | **Retention rule** (PRD 11.1): adopt "machine sessions kept 2 years; grants, faults and service records kept for the life of the makerspace (audit value); expired auth sessions and verification tokens purged". Implement as a **documented manual procedure** in the runbook (a `wrangler d1 execute` SQL run once a term by the admin), not a background job |
+| P7-61 | **Retention rule** (PRD 11.1): adopt "machine sessions kept 2 years; grants, faults and service records kept for the life of the makerspace (audit value); expired auth sessions and verification tokens purged". Implement as a **documented manual procedure** in the runbook (an `npm run remote -- d1 execute cleared-prod --remote --command "…"` SQL run once a term by the admin), not a background job |
 | P7-62 | **Data residency statement** for pilot conversations: "Data is stored in Cloudflare D1 with a western-North-America location hint; Cloudflare doesn't offer a Canadian jurisdiction for D1. Email addresses are processed by Brevo when verification or password-reset emails are sent." Add it to the privacy notice and the pilot checklist |
-| P7-63 | **Account security:** 2FA on Cloudflare, GitHub and Brevo; the Cloudflare API token is scoped (Phase 0) and stored only in GitHub secrets |
+| P7-63 | **Account security:** 2FA on Cloudflare, GitHub and Brevo; a Cloudflare API token, if one is used for headless deploys, is scoped (Phase 0) and only ever exported in the shell, never stored in a file (no CI/CD) |
 
 ### 3.7 Demo data (PRD M3, 14)
 
@@ -129,17 +129,17 @@
 
 | ID | Task |
 |---|---|
-| P7-76 | `scripts/set-password.ts <email> <temp-password> [--env staging\|production]`: hashes locally with `hashPassword` (no Worker CPU), then runs `wrangler d1 execute … --remote` to update the `credential` account row (`technologies.md` §6.6). Prints a reminder to tell the member to change it |
+| P7-76 | `scripts/set-password.ts <email> <temp-password> [--env staging\|production]`: hashes locally with `hashPassword` (no Worker CPU), then renders the deploy config and runs the equivalent of `npm run remote -- d1 execute … --remote` to update the `credential` account row (`technologies.md` §6.6). Prints a reminder to tell the member to change it |
 | P7-77 | `scripts/make-admin.ts <email> [--env …]`: the admin lock-out fix (runbook P7-86) as a script, so nobody hand-types SQL against production |
 
 ### 3.9 Runbook (`docs/runbook.md`)
 
 | ID | Section | Contents |
 |---|---|---|
-| P7-80 | Deploy | Merge → staging auto-deploy (GitHub Actions: migrations, then `npm run deploy:staging`) → check → approve production (migrations, then `npm run deploy`, which is `opennextjs-cloudflare build && opennextjs-cloudflare deploy`); what "additive only" means; first-ever deploy uses `scripts/deploy-first.sh` (uploads `BETTER_AUTH_SECRET`) |
+| P7-80 | Deploy | `npm run check` → `npm run db:migrate:staging` → `npm run deploy:staging` (ends with a smoke test) → check on staging → `npm run db:migrate:remote` → `npm run deploy`; what "additive only" means; first-ever deploy uses `npm run deploy:first[:staging]` (`scripts/deploy.sh --first`; uploads `BETTER_AUTH_SECRET`) |
 | P7-81 | Rollback | `wrangler rollback` (code); schema is additive, so rolling back code is safe; never roll back migrations |
-| P7-82 | Restore data | `wrangler d1 time-travel info cleared-prod`; `wrangler d1 time-travel restore cleared-prod --timestamp=<ISO>` (last 7 days); rehearse on staging first |
-| P7-83 | Backups | Weekly `wrangler d1 export cleared-prod --remote --output=backups/cleared-YYYY-MM-DD.sql` during a pilot; store privately (encrypted drive, not GitHub; it contains password hashes and personal data); delete after the retention period |
+| P7-82 | Restore data | `npm run remote -- d1 time-travel info cleared-prod`; `npm run remote -- d1 time-travel restore cleared-prod --timestamp=<ISO>` (last 7 days); rehearse on staging first (`cleared-staging … --env staging`) |
+| P7-83 | Backups | Weekly `npm run remote -- d1 export cleared-prod --remote --output="$HOME/cleared-backups/cleared-YYYY-MM-DD.sql"` (outside the repository, which is public) during a pilot; store privately (encrypted drive, not GitHub; it contains password hashes and personal data); delete after the retention period |
 | P7-84 | Quota incident | Symptoms (Error 1027, the daily-limit banner); check the dashboard (requests are shared with any other Worker on the account); what's using quota; wait for 00:00 UTC (5 pm MST / 6 pm MDT); mitigations (close kiosk tabs, raise poll intervals); **never upgrade to paid** |
 | P7-85 | CPU incident (Error 1102) | Find the route in Workers Logs; if it's sign-in/sign-up, follow `technologies.md` §6.4; if it's a page, reduce its server render (P7-25 list) |
 | P7-86 | Admin lock-out | `npx tsx scripts/make-admin.ts <email> --env production` (logged in the runbook with date and reason) |
@@ -155,7 +155,7 @@
 
 | ID | Task |
 |---|---|
-| P7-95 | Re-run **all automated tests** (unit, service T02–T10, route handlers, action-wrapper sweep, E2E) on the final commit in CI |
+| P7-95 | Re-run **all automated tests** (unit, service T02–T10, route handlers, action-wrapper sweep, E2E) on the final commit (`npm run check` + `npm run test:e2e`) |
 | P7-96 | Re-run **T01** on production with freshly printed labels on 2 phones, starting from a brand-new student sign-up (email verification included) |
 | P7-97 | Re-run **T11** on production after the final deploy |
 | P7-98 | Run **T12** (P7-23) and record the results |
@@ -201,7 +201,7 @@ Not required for the classroom MVP, but listed so nothing is forgotten:
 ## 6. Exit criteria
 
 - [ ] Every task in §3 done or explicitly deferred with a reason.
-- [ ] Every DoD row in §4 has evidence attached (links to CI runs, screenshots, the results table).
+- [ ] Every DoD row in §4 has evidence attached (command output, screenshots, the results table).
 - [ ] CPU audit (P7-30…33) recorded with no route over 10 ms, and auth flows passing.
 - [ ] T12 recorded; T01 and T11 re-run on production.
 - [ ] Runbook complete; one restore rehearsed on staging; `set-password` and `make-admin` scripts tested on staging.
@@ -215,7 +215,7 @@ Not required for the classroom MVP, but listed so nothing is forgotten:
 | # | Item | Status |
 |---|---|---|
 | D1 | The retention purge and unverified-account cleanup are manual, documented procedures (no background job) | Decided |
-| D2 | The usage alarm runs in GitHub Actions, not in the app | Decided |
+| D2 | The usage alarm, if adopted, runs in GitHub Actions, not in the app. Since 2026-11-22 the project uses no GitHub Actions otherwise, so adopting it is an explicit opt-in | Open |
 | D3 | WCAG 2.2 AA as the accessibility bar | Decided |
 | D4 | Admin password reset is a local script that hashes on the laptop, not an in-app feature | Decided: avoids Worker CPU and a new privileged screen |
 | D5 | `haveIBeenPwned` check only if the CPU audit shows headroom | Decided |
