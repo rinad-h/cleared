@@ -28,6 +28,12 @@ export const ERROR_CODES = [
   "MEMBER_SUSPENDED",
   "ALREADY_REVOKED",
   "IDEMPOTENCY_MISMATCH",
+  "NOT_CLEARED",
+  "SUPERVISION_ACK_REQUIRED",
+  "ALREADY_IN_SESSION",
+  "PASS_CHANGED",
+  "SESSION_ENDED",
+  "SESSION_AT_MAX",
   "CONFLICT_RETRY",
   "RATE_LIMITED",
   "DAILY_LIMIT",
@@ -43,7 +49,16 @@ export type FieldErrors = Record<string, string[] | undefined>;
  * machines that still require the certification. Never secrets or free text
  * someone else typed that the actor couldn't already see.
  */
-export type ErrorDetails = { machines?: { id: string; name: string }[] };
+export type ErrorDetails = {
+  machines?: { id: string; name: string }[];
+  /** `ALREADY_IN_SESSION`: the actor's own session. */
+  sessionId?: string;
+  /** `MACHINE_BUSY`: when the other session started and its estimated end (ISO). Never who. */
+  since?: string;
+  estFreeAt?: string;
+  /** `NOT_CLEARED`: the actor's own pass status. */
+  passStatus?: "OUT_OF_SERVICE" | "NOT_CLEARED" | "SUPERVISION_REQUIRED" | "CLEARED";
+};
 
 export class ServiceError extends Error {
   readonly code: ErrorCode;
@@ -144,6 +159,12 @@ const HTTP_STATUS: Record<ErrorCode, number> = {
   MEMBER_SUSPENDED: 409,
   ALREADY_REVOKED: 409,
   IDEMPOTENCY_MISMATCH: 409,
+  NOT_CLEARED: 403,
+  SUPERVISION_ACK_REQUIRED: 409,
+  ALREADY_IN_SESSION: 409,
+  PASS_CHANGED: 409,
+  SESSION_ENDED: 409,
+  SESSION_AT_MAX: 409,
   CONFLICT_RETRY: 409,
   RATE_LIMITED: 429,
   DAILY_LIMIT: 503,

@@ -9,7 +9,9 @@ import type { Actor, MemberActor } from "@/server/domain/actor";
 import { ServiceError } from "@/server/domain/errors";
 import { certState, validGrantSql, type CertState } from "@/server/domain/grants";
 import { parse } from "@/server/domain/parse";
+import { expireSessionsSql } from "@/server/domain/sessions";
 import { expiryFor } from "@/server/domain/time";
+import { endSessionsForAuthorizationSql } from "@/server/services/sessions";
 import { SETTINGS_ID } from "@/server/version";
 
 /* ------------------------------------------------------------------ types */
@@ -177,8 +179,9 @@ async function explainSignOffRefusal(db: Db, actor: MemberActor, input: SignOffI
  * the given grant **and** any other still-valid grant of the same member for
  * the same certification (an early renewal leaves two), so "Revoke" always
  * leaves the member without that certification. Not your own (`SELF_REVOKE`);
- * not twice (`ALREADY_REVOKED`). Phase 4 adds ending the member's affected
- * sessions to this batch.
+ * not twice (`ALREADY_REVOKED`). In the same batch, the member's active
+ * sessions on machines that require the certification end with
+ * `authorization_removed` (FR-08, Phase 4 §4.5).
  */
 export async function revokeGrant(
   db: Db,
@@ -196,7 +199,10 @@ export async function revokeGrant(
   }
   if (grant.revokedAt !== null) throw new ServiceError("ALREADY_REVOKED", "This certification was already revoked.");
 
-  const [updated] = await batch(db, [
+  const [, updated] = await batch(db, [
+    // 1. Close the member's expired-but-open sessions honestly (Phase 4 §4.5).
+    expireSessionsSql(now, { memberId: grant.memberId }),
+    // 2. Revoke.
     sql`UPDATE grants SET revoked_at = ${now}, revoked_by_member_id = ${actor.memberId}, revoke_reason = ${input.reason}
         WHERE member_id = ${grant.memberId} AND certification_id = ${grant.certificationId}
           AND member_id <> ${actor.memberId}
@@ -204,7 +210,12 @@ export async function revokeGrant(
           AND (id = ${grant.id} OR ${validGrantSql(now)})
           AND EXISTS (SELECT 1 FROM "grants" AS "target" WHERE "target"."id" = ${grant.id} AND "target"."revoked_at" IS NULL)
           AND ${actorStillStaff(actor)}`,
-    // Guarded by our own write: a refused or lost revoke doesn't bump.
+    // 3. End active sessions on machines that need this certification, unless a
+    //    valid grant still covers it (which is also what makes a refused revoke end nothing).
+    endSessionsForAuthorizationSql(grant.memberId, actor.memberId, now, { certificationId: grant.certificationId },
+      sql`NOT EXISTS (SELECT 1 FROM "grants" AS "still" WHERE "still"."member_id" = ${grant.memberId}
+            AND "still"."certification_id" = ${grant.certificationId} AND ${validGrantSql(now, "still")})`),
+    // 4. Guarded by our own write: a refused or lost revoke doesn't bump.
     sql`UPDATE settings SET data_version = data_version + 1
         WHERE id = ${SETTINGS_ID} AND EXISTS (SELECT 1 FROM "grants" WHERE "grants"."id" = ${grant.id}
           AND "grants"."revoked_at" = ${now} AND "grants"."revoked_by_member_id" = ${actor.memberId})`,

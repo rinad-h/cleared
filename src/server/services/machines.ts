@@ -12,6 +12,7 @@ import { ServiceError, type FieldErrors } from "@/server/domain/errors";
 import { newToken } from "@/server/domain/identity";
 import { parse } from "@/server/domain/parse";
 import { tokenGuard, withMachineWrite } from "@/server/machine-write";
+import { endMachineSessionsSql } from "@/server/services/sessions";
 import { SETTINGS_ID } from "@/server/version";
 
 export type MachineView = {
@@ -232,7 +233,8 @@ export async function updateMachine(db: Db, actor: Actor, rawInput: MachineUpdat
     await withMachineWrite(db, id, now, (machine) => {
       if (machine.status === "retired") throw retired();
       if (retire) {
-        // Phase 4 also ends an active session here; Phase 5 refuses while faults are open.
+        // Retiring ends the active session (`staff`, Phase 4 §4.5); the write
+        // helper already closed expired ones. Phase 5 refuses while faults are open.
         return {
           set: {
             status: "retired",
@@ -243,6 +245,7 @@ export async function updateMachine(db: Db, actor: Actor, rawInput: MachineUpdat
             expectedBackAt: null,
           },
           where: ne(machines.status, "retired"),
+          guarded: (guard) => [endMachineSessionsSql(id, actor.memberId, now, guard)],
           result: undefined,
         };
       }
