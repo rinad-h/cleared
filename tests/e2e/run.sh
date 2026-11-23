@@ -24,9 +24,17 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Start from an empty build dir. Turbopack persists its dev cache there, and a
+# cache left by an interrupted run can put every page into an endless
+# "HMR hash mismatch" reload loop. A cold start costs a few seconds; the
+# warm-up below and in auth.spec.ts absorbs it.
+rm -rf .next-e2e
+
 port="${E2E_PORT:-$(node -e 'const s=require("node:net").createServer().listen(0,"127.0.0.1",()=>{console.log(s.address().port);s.close()})')}"
 base_url="http://127.0.0.1:${port}"
 export D1_STATE_DIR="$tmp/d1"
+# Signed-in browser state saved by auth.spec.ts for the other specs.
+export E2E_STATE_DIR="$tmp/state"
 touch "$tmp/started"
 
 echo "E2E: applying migrations to a throwaway D1 in $D1_STATE_DIR"

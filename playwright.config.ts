@@ -19,5 +19,15 @@ export default defineConfig({
     baseURL: process.env.E2E_BASE_URL ?? "http://127.0.0.1:3100",
     trace: "retain-on-failure",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    // Setup happens once per database, so the auth flow (which runs it and
+    // leaves the admin's session for the others) goes first.
+    { name: "setup", testMatch: "auth.spec.ts", use: { ...devices["Desktop Chrome"] } },
+    {
+      name: "chromium",
+      testIgnore: "auth.spec.ts",
+      dependencies: ["setup"],
+      use: { ...devices["Desktop Chrome"] },
+    },
+  ],
 });
