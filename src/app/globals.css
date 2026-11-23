@@ -153,3 +153,15 @@
     @apply bg-background text-foreground;
   }
 }
+/* Printable sheets (labels, door poster): Letter paper, screen-only UI hidden with `print:hidden`. */
+@media print {
+  @page {
+    size: letter;
+    margin: 10mm;
+  }
+  html,
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+}
