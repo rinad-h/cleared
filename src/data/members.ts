@@ -2,6 +2,7 @@ import "server-only";
 import { getDb } from "@/db";
 import { getActor } from "@/lib/actor";
 import type { MemberSearch } from "@/lib/schemas/identity";
+import * as grants from "@/server/services/grants";
 import * as members from "@/server/services/members";
 
 export async function searchMembers(input: Partial<MemberSearch>) {
@@ -12,4 +13,13 @@ export async function searchMembers(input: Partial<MemberSearch>) {
 export async function getMember(id: string) {
   const actor = await getActor();
   return members.getMember(getDb(), actor, id);
+}
+
+/** Staff: the member's profile plus certifications and grant history (Phase 3 §5). */
+export async function getMemberDetail(id: string) {
+  const actor = await getActor();
+  const db = getDb();
+  const member = await members.getMember(db, actor, id);
+  const certs = await grants.getMemberCertifications(db, actor, { memberId: member.id }, Date.now());
+  return { ...member, ...certs };
 }

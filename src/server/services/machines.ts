@@ -1,9 +1,9 @@
 import "server-only";
 import { and, asc, eq, inArray, ne, sql, type SQL } from "drizzle-orm";
 import type { Db } from "@/db";
-import { certifications, machineRequirements, machines, rooms, settings } from "@/db/schema";
-import { MachineCreate, MachineId, MachineList, MachineUpdate, QrTokenInput } from "@/lib/schemas/catalog";
-import { requireRole, requireUser } from "@/server/authz";
+import { certifications, machineRequirements, machines, rooms } from "@/db/schema";
+import { MachineCreate, MachineId, MachineList, MachineUpdate } from "@/lib/schemas/catalog";
+import { requireRole } from "@/server/authz";
 import { batch, type Batchable } from "@/server/batch";
 import { isUniqueViolation } from "@/server/db-errors";
 import type { Actor } from "@/server/domain/actor";
@@ -263,55 +263,4 @@ export async function updateMachine(db: Db, actor: Actor, rawInput: MachineUpdat
     throw err;
   }
   return getMachine(db, actor, { id });
-}
-
-/* ------------------------------------------------------------ QR lookups */
-
-export type MachineByToken =
-  | { recognized: false }
-  | {
-      recognized: true;
-      machine: { id: string; name: string; roomName: string; supervised: boolean };
-      makerspace: { name: string; timezone: string };
-    };
-
-const TOKEN_SHAPE = /^[A-Za-z0-9_-]{1,64}$/;
-
-/**
- * Any signed-in user: the machine a QR label points to (Phase 2 shape; Phase 3
- * adds the viewer's pass). Unknown and retired tokens give the same
- * `{ recognized: false }`, so the answer reveals nothing (Phase 2 D5).
- * One indexed read.
- */
-export async function getMachineByToken(
-  db: Db,
-  actor: Actor,
-  rawInput: { token: string },
-): Promise<MachineByToken> {
-  requireUser(actor);
-  const { token } = parse(QrTokenInput, rawInput);
-  if (!TOKEN_SHAPE.test(token)) return { recognized: false };
-  const row = await db
-    .select({
-      id: machines.id,
-      name: machines.name,
-      status: machines.status,
-      supervised: machines.supervised,
-      roomName: rooms.name,
-      makerspaceName: settings.name,
-      timezone: settings.timezone,
-    })
-    .from(machines)
-    .innerJoin(rooms, eq(rooms.id, machines.roomId))
-    .leftJoin(settings, eq(settings.id, SETTINGS_ID))
-    .where(eq(machines.qrToken, token))
-    .get();
-  if (!row || row.status === "retired" || row.makerspaceName === null || row.timezone === null) {
-    return { recognized: false };
-  }
-  return {
-    recognized: true,
-    machine: { id: row.id, name: row.name, roomName: row.roomName, supervised: row.supervised },
-    makerspace: { name: row.makerspaceName, timezone: row.timezone },
-  };
 }
